@@ -1,0 +1,21 @@
+{
+  "name": "my-docs",
+  "description": "A project of vuepress-theme-hope",
+  "version": "2.0.0",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "docs:build": "vuepress-vite build src",
+    "docs:clean-dev": "vuepress-vite dev src --clean-cache",
+    "docs:dev": "vuepress-vite dev src",
+    "docs:update-package": "pnpm dlx vp-update"
+  },
+  "devDependencies": {
+    "@vuepress/bundler-vite": "2.0.0-rc.20",
+    "sass-embedded": "^1.85.1",
+    "vue": "^3.5.13",
+    "vuepress": "2.0.0-rc.20",
+    "vuepress-theme-hope": "2.0.0-rc.74"
+  },
+  "packageManager": "pnpm@10.6.1+sha512.40ee09af407fa9fbb5fbfb8e1cb40fbb74c0af0c3e10e9224d7b53c7658528615b2c92450e74cfad91e3a2dcafe3ce4050d80bda71d757756d2ce2b66213e9a3"
+}
