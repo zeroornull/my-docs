@@ -1,7 +1,10 @@
 name: Docker Image CI
 
 on:
-  workflow_dispatch:  # 手动触发
+  workflow_dispatch:  # 保留手动触发
+  push:              # 添加 push 事件触发
+    branches:        # 指定触发分支
+      - main        # 当推送代码到 main 分支时触发
 
 # 显式声明权限
 permissions:
