@@ -5,6 +5,13 @@ export default navbar([
   "/portfolio",
   "/demo/",
   {
+    text: "面试",
+    link: "/interview/x-interview.md",
+    icon: "lightbulb",
+    // 仅在 `/interview/` 激活
+    activeMatch: "^/interview/$",
+  },
+  {
     text: "指南",
     icon: "lightbulb",
     prefix: "/guide/",
