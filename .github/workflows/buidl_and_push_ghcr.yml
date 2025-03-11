@@ -31,8 +31,8 @@ jobs:
     # 构建并推送 Docker 镜像
     - name: Build and push Docker image
       run: |
-        # 明确使用你的个人命名空间
-        IMAGE_NAME="ghcr.io/zeroornull/my-image-name"
+        # 使用个人命名空间，镜像名改为 my-docs
+        IMAGE_NAME="ghcr.io/zeroornull/my-docs"
         echo "Pushing to: $IMAGE_NAME"
         docker build . --file Dockerfile \
           --tag "$IMAGE_NAME:latest" \
