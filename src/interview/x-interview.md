@@ -4533,3 +4533,13 @@ private static int add(int a, int b) {
 如果计算100+98的值，那么操作数栈的变化如下图
 
 ![img](https://b2files.173114.xyz/blogimg/2025/03/a968e2c20822af3419cceea3fe681b9e.png)
+
+#### 什么是本地方法栈（线程私有）？
+
+- **本地方法接口**
+
+一个 Native Method 就是一个 Java 调用非 Java 代码的接口。我们知道的 Unsafe 类就有很多本地方法。
+
+- **本地方法栈(Native Method Stack)**
+
+Java 虚拟机栈用于管理 Java 方法的调用，而本地方法栈用于管理本地方法的调用
