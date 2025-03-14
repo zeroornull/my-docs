@@ -4812,3 +4812,745 @@ JVM 在进行 GC 时，并非每次都对堆内存（新生代、老年代；方
   - 混合收集（Mixed GC）：收集整个新生代以及部分老年代的垃圾收集
     - 目前只有 G1 GC 会有这种行为
 - 整堆收集（Full GC）：收集整个 Java 堆和方法区的垃圾
+
+#### 说说JVM内存分配策略？
+
+- **对象优先在 Eden 分配**
+
+大多数情况下，对象在新生代 Eden 区分配，当 Eden 区空间不够时，发起 Minor GC。
+
+- **大对象直接进入老年代**
+
+大对象是指需要连续内存空间的对象，最典型的大对象是那种很长的字符串以及数组。
+
+经常出现大对象会提前触发垃圾收集以获取足够的连续空间分配给大对象。
+
+-XX:PretenureSizeThreshold，大于此值的对象直接在老年代分配，避免在 Eden 区和 Survivor 区之间的大量内存复制。
+
+- **长期存活的对象进入老年代**
+
+为对象定义年龄计数器，对象在 Eden 出生并经过 Minor GC 依然存活，将移动到 Survivor 中，年龄就增加 1 岁，增加到一定年龄则移动到老年代中。
+
+-XX:MaxTenuringThreshold 用来定义年龄的阈值。
+
+- **动态对象年龄判定**
+
+虚拟机并不是永远地要求对象的年龄必须达到 MaxTenuringThreshold 才能晋升老年代，如果在 Survivor 中相同年龄所有对象大小的总和大于 Survivor 空间的一半，则年龄大于或等于该年龄的对象可以直接进入老年代，无需等到 MaxTenuringThreshold 中要求的年龄。
+
+- **空间分配担保**
+
+在发生 Minor GC 之前，虚拟机先检查老年代最大可用的连续空间是否大于新生代所有对象总空间，如果条件成立的话，那么 Minor GC 可以确认是安全的。
+
+如果不成立的话虚拟机会查看 HandlePromotionFailure 设置值是否允许担保失败，如果允许那么就会继续检查老年代最大可用的连续空间是否大于历次晋升到老年代对象的平均大小，如果大于，将尝试着进行一次 Minor GC；如果小于，或者 HandlePromotionFailure 设置不允许冒险，那么就要进行一次 Full GC。
+
+#### 什么情况下会触发Full GC？
+
+对于 Minor GC，其触发条件非常简单，当 Eden 空间满时，就将触发一次 Minor GC。而 Full GC 则相对复杂，有以下条件:
+
+- **调用 System.gc()**
+
+只是建议虚拟机执行 Full GC，但是虚拟机不一定真正去执行。不建议使用这种方式，而是让虚拟机管理内存。
+
+- **老年代空间不足**
+
+老年代空间不足的常见场景为前文所讲的大对象直接进入老年代、长期存活的对象进入老年代等。
+
+为了避免以上原因引起的 Full GC，应当尽量不要创建过大的对象以及数组。除此之外，可以通过 -Xmn 虚拟机参数调大新生代的大小，让对象尽量在新生代被回收掉，不进入老年代。还可以通过 -XX:MaxTenuringThreshold 调大对象进入老年代的年龄，让对象在新生代多存活一段时间。
+
+- **空间分配担保失败**
+
+使用复制算法的 Minor GC 需要老年代的内存空间作担保，如果担保失败会执行一次 Full GC。
+
+- **JDK 1.7 及以前的永久代空间不足**
+
+在 JDK 1.7 及以前，HotSpot 虚拟机中的方法区是用永久代实现的，永久代中存放的为一些 Class 的信息、常量、静态变量等数据。
+
+当系统中要加载的类、反射的类和调用的方法较多时，永久代可能会被占满，在未配置为采用 CMS GC 的情况下也会执行 Full GC。如果经过 Full GC 仍然回收不了，那么虚拟机会抛出 java.lang.OutOfMemoryError。
+
+为避免以上原因引起的 Full GC，可采用的方法为增大永久代空间或转为使用 CMS GC。
+
+- **Concurrent Mode Failure**
+
+执行 CMS GC 的过程中同时有对象要放入老年代，而此时老年代空间不足(可能是 GC 过程中浮动垃圾过多导致暂时性的空间不足)，便会报 Concurrent Mode Failure 错误，并触发 Full GC。
+
+#### Hotspot中有哪些垃圾回收器？
+
+![image](https://b2files.173114.xyz/blogimg/2025/03/cc154755877a9d45e5e41b36e16190b4.jpg)
+
+以上是 HotSpot 虚拟机中的 7 个垃圾收集器，连线表示垃圾收集器可以配合使用。
+
+- 单线程与多线程: 单线程指的是垃圾收集器只使用一个线程进行收集，而多线程使用多个线程；
+- 串行与并行: 串行指的是垃圾收集器与用户程序交替执行，这意味着在执行垃圾收集的时候需要停顿用户程序；并形指的是垃圾收集器和用户程序同时执行。除了 CMS 和 G1 之外，其它垃圾收集器都是以串行的方式执行。
+
+1. **Serial 收集器**
+
+![image](https://b2files.173114.xyz/blogimg/2025/03/01e5081f061083e9988f50b843bdce08.jpg)
+
+Serial 翻译为串行，也就是说它以串行的方式执行。
+
+它是单线程的收集器，只会使用一个线程进行垃圾收集工作。
+
+它的优点是简单高效，对于单个 CPU 环境来说，由于没有线程交互的开销，因此拥有最高的单线程收集效率。
+
+它是 Client 模式下的默认新生代收集器，因为在用户的桌面应用场景下，分配给虚拟机管理的内存一般来说不会很大。Serial 收集器收集几十兆甚至一两百兆的新生代停顿时间可以控制在一百多毫秒以内，只要不是太频繁，这点停顿是可以接受的。
+
+1. **ParNew 收集器**
+
+![image](https://b2files.173114.xyz/blogimg/2025/03/b9bf6e1727fb42311c1eb7a0926c0d57.jpg)
+
+它是 Serial 收集器的多线程版本。
+
+是 Server 模式下的虚拟机首选新生代收集器，除了性能原因外，主要是因为除了 Serial 收集器，只有它能与 CMS 收集器配合工作。
+
+默认开启的线程数量与 CPU 数量相同，可以使用 -XX:ParallelGCThreads 参数来设置线程数。
+
+1. **Parallel Scavenge 收集器**
+
+与 ParNew 一样是多线程收集器。
+
+其它收集器关注点是尽可能缩短垃圾收集时用户线程的停顿时间，而它的目标是达到一个可控制的吞吐量，它被称为“吞吐量优先”收集器。这里的吞吐量指 CPU 用于运行用户代码的时间占总时间的比值。
+
+停顿时间越短就越适合需要与用户交互的程序，良好的响应速度能提升用户体验。而高吞吐量则可以高效率地利用 CPU 时间，尽快完成程序的运算任务，主要适合在后台运算而不需要太多交互的任务。
+
+缩短停顿时间是以牺牲吞吐量和新生代空间来换取的: 新生代空间变小，垃圾回收变得频繁，导致吞吐量下降。
+
+可以通过一个开关参数打开 GC 自适应的调节策略(GC Ergonomics)，就不需要手动指定新生代的大小(-Xmn)、Eden 和 Survivor 区的比例、晋升老年代对象年龄等细节参数了。虚拟机会根据当前系统的运行情况收集性能监控信息，动态调整这些参数以提供最合适的停顿时间或者最大的吞吐量。
+
+1. **Serial Old 收集器**
+
+![image](https://b2files.173114.xyz/blogimg/2025/03/16993beb849661df16e5eec8c15d2320.jpg)
+
+是 Serial 收集器的老年代版本，也是给 Client 模式下的虚拟机使用。如果用在 Server 模式下，它有两大用途:
+
+- 在 JDK 1.5 以及之前版本(Parallel Old 诞生以前)中与 Parallel Scavenge 收集器搭配使用。
+- 作为 CMS 收集器的后备预案，在并发收集发生 Concurrent Mode Failure 时使用。
+
+1. **Parallel Old 收集器**
+
+![image](https://b2files.173114.xyz/blogimg/2025/03/fe7c03208f3828c014e4a724537c61ac.jpg)
+
+是 Parallel Scavenge 收集器的老年代版本。
+
+在注重吞吐量以及 CPU 资源敏感的场合，都可以优先考虑 Parallel Scavenge 加 Parallel Old 收集器。
+
+1. **CMS 收集器**
+
+![image](https://b2files.173114.xyz/blogimg/2025/03/f338848f362071a01c826380011407ef.jpg)
+
+CMS(Concurrent Mark Sweep)，Mark Sweep 指的是标记 - 清除算法。
+
+分为以下四个流程:
+
+- 初始标记: 仅仅只是标记一下 GC Roots 能直接关联到的对象，速度很快，需要停顿。
+- 并发标记: 进行 GC Roots Tracing 的过程，它在整个回收过程中耗时最长，不需要停顿。
+- 重新标记: 为了修正并发标记期间因用户程序继续运作而导致标记产生变动的那一部分对象的标记记录，需要停顿。
+- 并发清除: 不需要停顿。
+
+在整个过程中耗时最长的并发标记和并发清除过程中，收集器线程都可以与用户线程一起工作，不需要进行停顿。
+
+具有以下缺点:
+
+- 吞吐量低: 低停顿时间是以牺牲吞吐量为代价的，导致 CPU 利用率不够高。
+- 无法处理浮动垃圾，可能出现 Concurrent Mode Failure。浮动垃圾是指并发清除阶段由于用户线程继续运行而产生的垃圾，这部分垃圾只能到下一次 GC 时才能进行回收。由于浮动垃圾的存在，因此需要预留出一部分内存，意味着 CMS 收集不能像其它收集器那样等待老年代快满的时候再回收。如果预留的内存不够存放浮动垃圾，就会出现 Concurrent Mode Failure，这时虚拟机将临时启用 Serial Old 来替代 CMS。
+- 标记 - 清除算法导致的空间碎片，往往出现老年代空间剩余，但无法找到足够大连续空间来分配当前对象，不得不提前触发一次 Full GC。
+
+1. **G1 收集器**
+
+G1(Garbage-First)，它是一款面向服务端应用的垃圾收集器，在多 CPU 和大内存的场景下有很好的性能。HotSpot 开发团队赋予它的使命是未来可以替换掉 CMS 收集器。
+
+堆被分为新生代和老年代，其它收集器进行收集的范围都是整个新生代或者老年代，而 **G1 可以直接对新生代和老年代一起回收**。
+
+![image](https://b2files.173114.xyz/blogimg/2025/03/d23ff703a0796e77bb09239fe2493028.png)
+
+G1 把堆划分成多个大小相等的独立区域(Region)，新生代和老年代不再物理隔离。
+
+![image](https://b2files.173114.xyz/blogimg/2025/03/18e82055a2eaa3e5a365e35eb7865b7f.png)
+
+**通过引入 Region 的概念，从而将原来的一整块内存空间划分成多个的小空间，使得每个小空间可以单独进行垃圾回收**。这种划分方法带来了很大的灵活性，使得可预测的停顿时间模型成为可能。通过记录每个 Region 垃圾回收时间以及回收所获得的空间(这两个值是通过过去回收的经验获得)，并维护一个优先列表，每次根据允许的收集时间，优先回收价值最大的 Region。
+
+每个 Region 都有一个 Remembered Set，用来记录该 Region 对象的引用对象所在的 Region。通过使用 Remembered Set，在做可达性分析的时候就可以避免全堆扫描。
+
+![image](https://b2files.173114.xyz/blogimg/2025/03/ddb97eb22a6627fec00cb07331b7eb81.jpg)
+
+如果不计算维护 Remembered Set 的操作，G1 收集器的运作大致可划分为以下几个步骤:
+
+- 初始标记
+- 并发标记
+- 最终标记: 为了修正在并发标记期间因用户程序继续运作而导致标记产生变动的那一部分标记记录，虚拟机将这段时间对象变化记录在线程的 Remembered Set Logs 里面，最终标记阶段需要把 Remembered Set Logs 的数据合并到 Remembered Set 中。这阶段需要停顿线程，但是可并行执行。
+- 筛选回收: 首先对各个 Region 中的回收价值和成本进行排序，根据用户所期望的 GC 停顿时间来制定回收计划。此阶段其实也可以做到与用户程序一起并发执行，但是因为只回收一部分 Region，时间是用户可控制的，而且停顿用户线程将大幅度提高收集效率。
+
+具备如下特点:
+
+- 空间整合: 整体来看是基于“标记 - 整理”算法实现的收集器，从局部(两个 Region 之间)上来看是基于“复制”算法实现的，这意味着运行期间不会产生内存空间碎片。
+- 可预测的停顿: 能让使用者明确指定在一个长度为 M 毫秒的时间片段内，消耗在 GC 上的时间不得超过 N 毫秒。
+
+### 5.4 问题排查
+
+#### 常见的Linux定位问题的工具？
+
+- 文本操作
+  - 文本查找 - grep
+  - 文本分析 - awk
+  - 文本处理 - sed
+- 文件操作
+  - 文件监听 - tail
+  - 文件查找 - find
+- 网络和进程
+  - 网络接口 - ifconfig
+  - 防火墙 - iptables -L
+  - 路由表 - route -n
+  - netstat
+- 其它常用
+  - 进程 ps -ef | grep java
+  - 分区大小 df -h
+  - 内存 free -m
+  - 硬盘大小 fdisk -l |grep Disk
+  - top
+  - 环境变量 env
+
+#### JDK自带的定位问题的工具？
+
+- **jps** jps是jdk提供的一个查看当前java进程的小工具， 可以看做是JavaVirtual Machine Process Status Tool的缩写。
+
+```bash
+jps –l # 输出输出完全的包名，应用主类名，jar的完全路径名 
+```
+
+- **jstack** jstack是jdk自带的线程堆栈分析工具，使用该命令可以查看或导出 Java 应用程序中线程堆栈信息。
+
+```bash
+# 基本
+jstack 2815
+jstack -m 2815 # java和native c/c++框架的所有栈信息
+jstack -l 2815 # 额外的锁信息列表，查看是否死锁
+```
+
+- **jinfo** jinfo 是 JDK 自带的命令，可以用来查看正在运行的 java 应用程序的扩展参数，包括Java System属性和JVM命令行参数；也可以动态的修改正在运行的 JVM 一些参数。当系统崩溃时，jinfo可以从core文件里面知道崩溃的Java应用程序的配置信息
+
+```bash
+jinfo 2815 # 输出当前 jvm 进程的全部参数和系统属性
+```
+
+- **jmap** 命令jmap是一个多功能的命令。它可以生成 java 程序的 dump 文件， 也可以查看堆内对象示例的统计信息、查看 ClassLoader 的信息以及 finalizer 队列。
+
+```bash
+# 查看堆的情况
+jmap -heap 2815
+
+# dump
+jmap -dump:live,format=b,file=/tmp/heap2.bin 2815
+```
+
+- **jstat** jstat参数众多，但是使用一个就够了
+
+```bash
+jstat -gcutil 2815 1000 
+```
+
+#### 如何使用在线调试工具Arthas？
+
+举几个例子
+
+- **查看最繁忙的线程，以及是否有阻塞情况发生**?
+
+场景：我想看下查看最繁忙的线程，以及是否有阻塞情况发生? 常规查看线程，一般我们可以通过 top 等系统命令进行查看，但是那毕竟要很多个步骤，很麻烦。
+
+```bash
+thread -n 3 # 查看最繁忙的三个线程栈信息
+thread  # 以直观的方式展现所有的线程情况
+thread -b #找出当前阻塞其他线程的线程
+```
+
+- **确认某个类是否已被系统加载**?
+
+场景：我新写了一个类或者一个方法，我想知道新写的代码是否被部署了?
+
+```bash
+# 即可以找到需要的类全路径，如果存在的话
+sc *MyServlet
+
+# 查看这个某个类所有的方法
+sm pdai.tech.servlet.TestMyServlet *
+
+# 查看某个方法的信息，如果存在的话
+sm pdai.tech.servlet.TestMyServlet testMethod  
+```
+
+- **如何查看一个class类的源码信息**?
+
+场景：我新修改的内容在方法内部，而上一个步骤只能看到方法，这时候可以反编译看下源码
+
+```bash
+# 直接反编译出java 源代码，包含一此额外信息的
+jad pdai.tech.servlet.TestMyServlet
+```
+
+- **如何跟踪某个方法的返回值、入参**?
+
+场景：我想看下我新加的方法在线运行的参数和返回值?
+
+```bash
+# 同时监控入参，返回值，及异常
+watch pdai.tech.servlet.TestMyServlet testMethod "{params, returnObj, throwExp}" -e -x 2 
+```
+
+- **如何看方法调用栈的信息**?
+
+场景：我想看下某个方法的调用栈的信息?
+
+```bash
+stack pdai.tech.servlet.TestMyServlet testMethod
+```
+
+运行此命令之后需要即时触发方法才会有响应的信息打印在控制台上
+
+- **找到最耗时的方法调用**?
+
+场景：testMethod这个方法入口响应很慢，如何找到最耗时的子调用?
+
+```bash
+# 执行的时候每个子调用的运行时长，可以找到最耗时的子调用。
+stack pdai.tech.servlet.TestMyServlet testMethod
+```
+
+运行此命令之后需要即时触发方法才会有响应的信息打印在控制台上，然后一层一层看子调用。
+
+- **如何临时更改代码运行**?
+
+场景：我找到了问题所在，能否线上直接修改测试，而不需要在本地改了代码后，重新打包部署，然后重启观察效果?
+
+```bash
+# 先反编译出class源码
+jad --source-only com.example.demo.arthas.user.UserController > /tmp/UserController.java  
+
+# 然后使用外部工具编辑内容
+mc /tmp/UserController.java -d /tmp  # 再编译成class
+
+# 最后，重新载入定义的类，就可以实时验证你的猜测了
+redefine /tmp/com/example/demo/arthas/user/UserController.class
+```
+
+如上，是直接更改线上代码的方式，但是一般好像是编译不成功的。所以，最好是本地ide编译成 class文件后，再上传替换为好！
+
+总之，已经完全不用重启和发布了！这个功能真的很方便，比起重启带来的代价，真的是不可比的。比如，重启时可能导致负载重分配，选主等等问题，就不是你能控制的了。
+
+- **我如何测试某个方法的性能问题**?
+
+```bash
+monitor -c 5 demo.MathGame primeFactors
+```
+
+#### 如何使用Idea的远程调试？
+
+要让远程服务器运行的代码支持远程调试，则启动的时候必须加上特定的JVM参数，这些参数是：
+
+```bash
+-Xdebug -Xrunjdwp:transport=dt_socket,suspend=n,server=y,address=127.0.0.1:5555
+```
+
+#### 复杂综合类型问题的定位思路？
+
+![img](https://b2files.173114.xyz/blogimg/2025/03/c01589f0995701911e937de084138f2b.png)
+
+## 6 Java 新版本
+
+> Java 8版本特性，及Java8+版本特性。
+
+### 6.1 Java 8 特性
+
+#### [#](https://pdai.tech/md/interview/x-interview.html#什么是函数式编程-lambda表达式)什么是函数式编程？Lambda表达式？
+
+- **函数式编程**
+
+面向对象编程是对数据进行抽象；函数式编程是对行为进行抽象。
+
+核心思想: 使用不可变值和函数，函数对一个值进行处理，映射成另一个值。
+
+- **Lambda表达式**
+
+lambda表达式仅能放入如下代码: 预定义使用了 `@Functional` 注释的函数式接口，自带一个抽象函数的方法，或者SAM(Single Abstract Method 单个抽象方法)类型。这些称为lambda表达式的目标类型，可以用作返回类型，或lambda目标代码的参数。例如，若一个方法接收Runnable、Comparable或者 Callable 接口，都有单个抽象方法，可以传入lambda表达式。类似的，如果一个方法接受声明于 java.util.function 包内的接口，例如 Predicate、Function、Consumer 或 Supplier，那么可以向其传lambda表达式
+
+#### Stream中常用方法？
+
+- `stream()`, `parallelStream()`
+- `filter()`
+- `findAny()` `findFirst()`
+- `sort`
+- `forEach` void
+- `map(), reduce()`
+- `flatMap()` - 将多个Stream连接成一个Stream
+- `collect(Collectors.toList())`
+- `distinct`, `limit`
+- `count`
+- `min`, `max`, `summaryStatistics`
+
+#### 什么是FunctionalInterface？
+
+```java
+@Documented
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.TYPE)
+public @interface FunctionalInterface{}
+```
+
+- interface做注解的注解类型，被定义成java语言规
+- 一个被它注解的接口只能有一个抽象方法，有两种例外
+- 第一是接口允许有实现的方法，这种实现的方法是用default关键字来标记的(java反射中java.lang.reflect.Method#isDefault()方法用来判断是否是default方法)
+- 第二如果声明的方法和java.lang.Object中的某个方法一样，它可以不当做未实现的方法，不违背这个原则: 一个被它注解的接口只能有一个抽象方法, 比如: `java public interface Comparator<T> { int compare(T o1, T o2); boolean equals(Object obj); }`
+- 如果一个类型被这个注解修饰，那么编译器会要求这个类型必须满足如下条件:
+  - 这个类型必须是一个interface，而不是其他的注解类型、枚举enum或者类class
+  - 这个类型必须满足function interface的所有要求，如你个包含两个抽象方法的接口增加这个注解，会有编译错误。
+- 编译器会自动把满足function interface要求的接口自动识别为function interface。
+
+#### 如何自定义函数接口？
+
+```java
+@FunctionalInterface
+public interface IMyInterface {
+    void study();
+}
+
+public class TestIMyInterface {
+    public static void main(String[] args) {
+        IMyInterface iMyInterface = () -> System.out.println("I like study");
+        iMyInterface.study();
+    }
+}
+```
+
+#### 内置的四大函数接口及使用？
+
+- **消费型接口: Consumer< T> void accept(T t)有参数，无返回值的抽象方法**；
+
+```java
+Consumer<Person> greeter = (p) -> System.out.println("Hello, " + p.firstName);
+greeter.accept(new Person("Luke", "Skywalker"));
+```
+
+- **供给型接口: Supplier < T> T get() 无参有返回值的抽象方法**；
+
+以stream().collect(Collector<? super T, A, R> collector)为例:
+
+比如:
+
+```java
+Supplier<Person> personSupplier = Person::new;
+personSupplier.get();   // new Person
+```
+
+- **断定型接口: Predicate<T> boolean test(T t):有参，但是返回值类型是固定的boolean**
+
+比如: steam().filter()中参数就是Predicate
+
+```java
+Predicate<String> predicate = (s) -> s.length() > 0;
+
+predicate.test("foo");              // true
+predicate.negate().test("foo");     // false
+
+Predicate<Boolean> nonNull = Objects::nonNull;
+Predicate<Boolean> isNull = Objects::isNull;
+
+Predicate<String> isEmpty = String::isEmpty;
+Predicate<String> isNotEmpty = isEmpty.negate();
+```
+
+- **函数型接口: Function<T,R> R apply(T t)有参有返回值的抽象方法**；
+
+比如: steam().map() 中参数就是Function<? super T, ? extends R>；reduce()中参数BinaryOperator<T> (ps: BinaryOperator<T> extends BiFunction<T,T,T>)
+
+```java
+Function<String, Integer> toInteger = Integer::valueOf;
+Function<String, String> backToString = toInteger.andThen(String::valueOf);
+
+backToString.apply("123");     // "123"
+```
+
+#### Optional要解决什么问题？
+
+在调用一个方法得到了返回值却不能直接将返回值作为参数去调用别的方法，我们首先要判断这个返回值是否为null，只有在非空的前提下才能将其作为其他方法的参数。Java 8引入了一个新的Optional类：这是一个可以为null的容器对象，如果值存在则isPresent()方法会返回true，调用get()方法会返回该对象。
+
+#### [#](https://pdai.tech/md/interview/x-interview.html#如何使用optional来解决嵌套对象的判空问题)如何使用Optional来解决嵌套对象的判空问题？
+
+假设我们有一个像这样的类层次结构:
+
+```java
+class Outer {
+    Nested nested;
+    Nested getNested() {
+        return nested;
+    }
+}
+class Nested {
+    Inner inner;
+    Inner getInner() {
+        return inner;
+    }
+}
+class Inner {
+    String foo;
+    String getFoo() {
+        return foo;
+    }
+}
+```
+
+解决这种结构的深层嵌套路径是有点麻烦的。我们必须编写一堆 null 检查来确保不会导致一个 NullPointerException:
+
+```java
+Outer outer = new Outer();
+if (outer != null && outer.nested != null && outer.nested.inner != null) {
+    System.out.println(outer.nested.inner.foo);
+}
+```
+
+我们可以通过利用 Java 8 的 Optional 类型来摆脱所有这些 null 检查。map 方法接收一个 Function 类型的 lambda 表达式，并自动将每个 function 的结果包装成一个 Optional 对象。这使我们能够在一行中进行多个 map 操作。Null 检查是在底层自动处理的。
+
+```java
+Optional.of(new Outer())
+    .map(Outer::getNested)
+    .map(Nested::getInner)
+    .map(Inner::getFoo)
+    .ifPresent(System.out::println);
+```
+
+还有一种实现相同作用的方式就是通过利用一个 supplier 函数来解决嵌套路径的问题:
+
+```java
+Outer obj = new Outer();
+resolve(() -> obj.getNested().getInner().getFoo())
+    .ifPresent(System.out::println);
+```
+
+#### 什么是默认方法，为什么要有默认方法？
+
+就是接口可以有实现方法，而且不需要实现类去实现其方法。只需在方法名前面加个default关键字即可。
+
+```java
+public interface A {
+    default void foo(){
+       System.out.println("Calling A.foo()");
+    }
+}
+
+public class Clazz implements A {
+    public static void main(String[] args){
+       Clazz clazz = new Clazz();
+       clazz.foo();//调用A.foo()
+    }
+}
+```
+
+- **为什么出现默认方法**？
+
+首先，之前的接口是个双刃剑，好处是面向抽象而不是面向具体编程，缺陷是，当需要修改接口时候，需要修改全部实现该接口的类，目前的java 8之前的集合框架没有foreach方法，通常能想到的解决办法是在JDK里给相关的接口添加新的方法及实现。然而，对于已经发布的版本，是没法在给接口添加新方法的同时不影响已有的实现。所以引进的默认方法。他们的目的是为了解决接口的修改与现有的实现不兼容的问题。
+
+#### 什么是类型注解？
+
+类型注解**被用来支持在Java的程序中做强类型检查。配合插件式的check framework，可以在编译的时候检测出runtime error，以提高代码质量**。这就是类型注解的作用了。
+
+1. 在java 8之前，注解只能是在声明的地方所使用，比如类，方法，属性；
+2. java 8里面，注解可以应用在任何地方，比如:
+
+创建类实例
+
+```java
+new @Interned MyObject();
+```
+
+类型映射
+
+```java
+myString = (@NonNull String) str;
+```
+
+implements 语句中
+
+```java
+class UnmodifiableList<T> implements @Readonly List<@Readonly T> { … }
+```
+
+throw exception声明
+
+```java
+void monitorTemperature() throws @Critical TemperatureException { … }
+```
+
+需要注意的是，**类型注解只是语法而不是语义，并不会影响java的编译时间，加载时间，以及运行时间，也就是说，编译成class文件的时候并不包含类型注解**。
+
+#### 什么是重复注解？
+
+允许在同一申明类型(类，属性，或方法)的多次使用同一个注解
+
+- **JDK8之前**
+
+java 8之前也有重复使用注解的解决方案，但可读性不是很好，比如下面的代码:
+
+```java
+public @interface Authority {
+     String role();
+}
+
+public @interface Authorities {
+    Authority[] value();
+}
+
+public class RepeatAnnotationUseOldVersion {
+
+    @Authorities({@Authority(role="Admin"),@Authority(role="Manager")})
+    public void doSomeThing(){
+    }
+}
+```
+
+由另一个注解来存储重复注解，在使用时候，用存储注解Authorities来扩展重复注解。
+
+- **Jdk8重复注解**
+
+我们再来看看java 8里面的做法:
+
+```java
+@Repeatable(Authorities.class)
+public @interface Authority {
+     String role();
+}
+
+public @interface Authorities {
+    Authority[] value();
+}
+
+public class RepeatAnnotationUseNewVersion {
+    @Authority(role="Admin")
+    @Authority(role="Manager")
+    public void doSomeThing(){ }
+}
+```
+
+不同的地方是，创建重复注解Authority时，加上@Repeatable,指向存储注解Authorities，在使用时候，直接可以重复使用Authority注解。从上面例子看出，java 8里面做法更适合常规的思维，可读性强一点
+
+### 6.2 Java 9+ 特性
+
+#### Java 9后续版本发布是按照什么样的发布策略呢？
+
+Java现在发布的版本很快，每年两个，但是真正会被大规模使用的是三年一个的TLS版本。@pdai
+
+- 每3年发布一个TLS，长期维护版本。意味着Java 8 ，Java 11， Java 17 才可能被大规模使用。
+- 每年发布两个正式版本，分别是3月份和9月份。
+
+#### Java 9后续新版本中你知道哪些？
+
+能够举几个即可：
+
+- **Java10 - 并行全垃圾回收器 G1**
+
+大家如果接触过 Java 性能调优工作，应该会知道，调优的最终目标是通过参数设置来达到快速、低延时的内存垃圾回收以提高应用吞吐量，尽可能的避免因内存回收不及时而触发的完整 GC（Full GC 会带来应用出现卡顿）。
+
+G1 垃圾回收器是 Java 9 中 Hotspot 的默认垃圾回收器，是以一种低延时的垃圾回收器来设计的，旨在避免进行 Full GC，但是当并发收集无法快速回收内存时，会触发垃圾回收器回退进行 Full GC。之前 Java 版本中的 G1 垃圾回收器执行 GC 时采用的是基于单线程标记扫描压缩算法（mark-sweep-compact）。为了最大限度地减少 Full GC 造成的应用停顿的影响，Java 10 中将为 G1 引入多线程并行 GC，同时会使用与年轻代回收和混合回收相同的并行工作线程数量，从而减少了 Full GC 的发生，以带来更好的性能提升、更大的吞吐量。
+
+Java 10 中将采用并行化 mark-sweep-compact 算法，并使用与年轻代回收和混合回收相同数量的线程。具体并行 GC 线程数量可以通过： `-XX：ParallelGCThreads` 参数来调节，但这也会影响用于年轻代和混合收集的工作线程数。
+
+- **Java11 - ZGC：可伸缩低延迟垃圾收集器**
+
+ZGC 即 Z Garbage Collector（垃圾收集器或垃圾回收器），这应该是 Java 11 中最为瞩目的特性，没有之一。ZGC 是一个可伸缩的、低延迟的垃圾收集器，主要为了满足如下目标进行设计：
+
+1. GC 停顿时间不超过 10ms
+2. 即能处理几百 MB 的小堆，也能处理几个 TB 的大堆
+3. 应用吞吐能力不会下降超过 15%（与 G1 回收算法相比）
+4. 方便在此基础上引入新的 GC 特性和利用 colord
+5. 针以及 Load barriers 优化奠定基础
+6. 当前只支持 Linux/x64 位平台
+
+停顿时间在 10ms 以下，10ms 其实是一个很保守的数据，即便是 10ms 这个数据，也是 GC 调优几乎达不到的极值。根据 SPECjbb 2015 的基准测试，128G 的大堆下最大停顿时间才 1.68ms，远低于 10ms，和 G1 算法相比，改进非常明显。
+
+![img](https://pdai.tech/images/java/java-11-1.png)
+
+- **Java 14 - Switch 表达式**（正式版）
+
+switch 表达式在之前的 Java 12 和 Java 13 中都是处于预览阶段，而在这次更新的 Java 14 中，终于成为稳定版本，能够正式可用。
+
+switch 表达式带来的不仅仅是编码上的简洁、流畅，也精简了 switch 语句的使用方式，同时也兼容之前的 switch 语句的使用；之前使用 switch 语句时，在每个分支结束之前，往往都需要加上 break 关键字进行分支跳出，以防 switch 语句一直往后执行到整个 switch 语句结束，由此造成一些意想不到的问题。switch 语句一般使用冒号 ：来作为语句分支代码的开始，而 switch 表达式则提供了新的分支切换方式，即 -> 符号右则表达式方法体在执行完分支方法之后，自动结束 switch 分支，同时 -> 右则方法块中可以是表达式、代码块或者是手动抛出的异常。以往的 switch 语句写法如下：
+
+```java
+int dayOfWeek;
+switch (day) {
+    case MONDAY:
+    case FRIDAY:
+    case SUNDAY:
+        dayOfWeek = 6;
+        break;
+    case TUESDAY:
+        dayOfWeek = 7;
+        break;
+    case THURSDAY:
+    case SATURDAY:
+        dayOfWeek = 8;
+        break;
+    case WEDNESDAY:
+        dayOfWeek = 9;
+        break;
+    default:
+        dayOfWeek = 0;
+        break;
+}
+```
+
+而现在 Java 14 可以使用 switch 表达式正式版之后，上面语句可以转换为下列写法：
+
+```java
+int dayOfWeek = switch (day) {
+    case MONDAY, FRIDAY, SUNDAY -> 6;
+    case TUESDAY                -> 7;
+    case THURSDAY, SATURDAY     -> 8;
+case WEDNESDAY              -> 9;
+    default              -> 0;
+
+};
+```
+
+很明显，switch 表达式将之前 switch 语句从编码方式上简化了不少，但是还是需要注意下面几点：
+
+1. 需要保持与之前 switch 语句同样的 case 分支情况。
+2. 之前需要用变量来接收返回值，而现在直接使用 yield 关键字来返回 case 分支需要返回的结果。
+3. 现在的 switch 表达式中不再需要显式地使用 return、break 或者 continue 来跳出当前分支。
+4. 现在不需要像之前一样，在每个分支结束之前加上 break 关键字来结束当前分支，如果不加，则会默认往后执行，直到遇到 break 关键字或者整个 switch 语句结束，在 Java 14 表达式中，表达式默认执行完之后自动跳出，不会继续往后执行。
+5. 对于多个相同的 case 方法块，可以将 case 条件并列，而不需要像之前一样，通过每个 case 后面故意不加 break 关键字来使用相同方法块。
+
+使用 switch 表达式来替换之前的 switch 语句，确实精简了不少代码，提高了编码效率，同时也可以规避一些可能由于不太经意而出现的意想不到的情况，可见 Java 在提高使用者编码效率、编码体验和简化使用方面一直在不停的努力中，同时也期待未来有更多的类似 lambda、switch 表达式这样的新特性出来。
+
+- **Java 14 - Records**
+
+在 Java 14 中引入了 Record 类型，其效果有些类似 Lombok 的 @Data 注解、Kotlin 中的 data class，但是又不尽完全相同，它们的共同点都是类的部分或者全部可以直接在类头中定义、描述，并且这个类只用于存储数据而已。对于 Record 类型，具体可以用下面代码来说明：
+
+```java
+public record Person(String name, int age) {
+    public static String address;
+
+    public String getName() {
+        return name;
+    }
+}
+```
+
+对上述代码进行编译，然后反编译之后可以看到如下结果：
+
+```java
+public final class Person extends java.lang.Record {
+    private final java.lang.String name;
+    private final java.lang.String age;
+
+    public Person(java.lang.String name, java.lang.String age) { /* compiled code */ }
+
+    public java.lang.String getName() { /* compiled code */ }
+
+    public java.lang.String toString() { /* compiled code */ }
+
+    public final int hashCode() { /* compiled code */ }
+
+    public final boolean equals(java.lang.Object o) { /* compiled code */ }
+
+    public java.lang.String name() { /* compiled code */ }
+
+    public java.lang.String age() { /* compiled code */ }
+}
+```
+
