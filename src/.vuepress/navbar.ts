@@ -6,10 +6,10 @@ export default navbar([
   "/demo/",
   {
     text: "面试",
-    link: "/interview/x-interview.md",
+    link: "/interview/",
     icon: "lightbulb",
     // 仅在 `/interview/` 激活
-    activeMatch: "^/interview/$",
+    // activeMatch: "^/interview/$",
   },
   {
     text: "指南",
