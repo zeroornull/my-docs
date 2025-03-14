@@ -5158,7 +5158,7 @@ monitor -c 5 demo.MathGame primeFactors
 
 ### 6.1 Java 8 特性
 
-#### [#](https://pdai.tech/md/interview/x-interview.html#什么是函数式编程-lambda表达式)什么是函数式编程？Lambda表达式？
+#### 什么是函数式编程？Lambda表达式？
 
 - **函数式编程**
 
@@ -5238,11 +5238,12 @@ Supplier<Person> personSupplier = Person::new;
 personSupplier.get();   // new Person
 ```
 
-- **断定型接口: Predicate<T> boolean test(T t):有参，但是返回值类型是固定的boolean**
 
-比如: steam().filter()中参数就是Predicate
 
 ```java
+断定型接口: Predicate<T> boolean test(T t):有参，但是返回值类型是固定的boolean
+比如: steam().filter()中参数就是Predicate
+
 Predicate<String> predicate = (s) -> s.length() > 0;
 
 predicate.test("foo");              // true
@@ -5253,24 +5254,21 @@ Predicate<Boolean> isNull = Objects::isNull;
 
 Predicate<String> isEmpty = String::isEmpty;
 Predicate<String> isNotEmpty = isEmpty.negate();
-```
 
-- **函数型接口: Function<T,R> R apply(T t)有参有返回值的抽象方法**；
-
+函数型接口: Function<T,R> R apply(T t)有参有返回值的抽象方法；
 比如: steam().map() 中参数就是Function<? super T, ? extends R>；reduce()中参数BinaryOperator<T> (ps: BinaryOperator<T> extends BiFunction<T,T,T>)
-
-```java
+    
 Function<String, Integer> toInteger = Integer::valueOf;
 Function<String, String> backToString = toInteger.andThen(String::valueOf);
 
-backToString.apply("123");     // "123"
+backToString.apply("123");     // "123"    
 ```
 
 #### Optional要解决什么问题？
 
 在调用一个方法得到了返回值却不能直接将返回值作为参数去调用别的方法，我们首先要判断这个返回值是否为null，只有在非空的前提下才能将其作为其他方法的参数。Java 8引入了一个新的Optional类：这是一个可以为null的容器对象，如果值存在则isPresent()方法会返回true，调用get()方法会返回该对象。
 
-#### [#](https://pdai.tech/md/interview/x-interview.html#如何使用optional来解决嵌套对象的判空问题)如何使用Optional来解决嵌套对象的判空问题？
+#### 如何使用Optional来解决嵌套对象的判空问题？
 
 假设我们有一个像这样的类层次结构:
 
