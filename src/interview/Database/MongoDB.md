@@ -458,3 +458,21 @@ BSON则是二进制文件，体积小但对人类几乎没有可读性。
    sum_temperature: 2413
 }
 ```
+
+#### MongoDB如何进行性能优化？
+
+- **慢查询**
+
+为了定位查询，需要查看当前mongo profile的级别, profile的级别有0|1|2，分别代表意思: 0代表关闭，1代表记录慢命令，2代表全部
+
+```json
+db.getProfilingLevel()
+```
+
+显示为0， 表示默认下是没有记录的。
+
+设置profile级别，设置为记录慢查询模式, 所有超过1000ms的查询语句都会被记录下来
+
+```json
+db.setProfilingLevel(1, 1000)
+```
