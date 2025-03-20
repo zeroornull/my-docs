@@ -8,6 +8,7 @@
 #     index: true
 title: Redis
 index: true
+headerDepth: 3
 # icon: laptop-code
 # sidebar: true
 # toc: true
