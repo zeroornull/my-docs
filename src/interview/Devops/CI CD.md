@@ -9,6 +9,7 @@
 title: CI/CD
 index: true
 headerDepth: 3
+order: 4
 # icon: laptop-code
 # sidebar: true
 # toc: true

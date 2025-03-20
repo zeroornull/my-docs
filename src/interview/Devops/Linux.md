@@ -9,6 +9,7 @@
 title: Linux
 index: true
 headerDepth: 3
+order: 1
 # icon: laptop-code
 # sidebar: true
 # toc: true
