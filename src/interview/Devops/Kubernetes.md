@@ -856,7 +856,9 @@ kubernetes包含几个组件。各个组件的功能是什么。组件之间是�
 
 设想一个一千台物理机，上万规模的容器的kubernetes集群，请详述使用kubernetes时需要注意哪些问题？应该怎样解决？（提示可以从高可用，高性能等方向，覆盖到从镜像中心到kubernetes各个组件等） 设想kubernetes集群管理从一千台节点到五千台节点，可能会遇到什么样的瓶颈。应该如何解决。 kubernetes的运营中有哪些注意的要点。 集群发生雪崩的条件，以及预防手段。 设计一种可以替代kube-proxy的实现 sidecar的设计模式如何在k8s中进行应用。有什么意义。 灰度发布是什么。如何使用k8s现有的资源实现灰度发布。 介绍k8s实践中踩过的比较大的一个坑和解决方式。
 
-# https://zhuanlan.zhihu.com/p/702112712
+### 这30道K8S面试题你能答出来几个？
+
+https://zhuanlan.zhihu.com/p/702112712
 
 **Q1. Kubernetes的控制平面包括哪些核心组件？它们各自的作用是什么？**
 
@@ -1019,7 +1021,9 @@ Service Account的主要用途是为运行在集群中的Pod提供API访问权�
 
 **A30.** Ingress是Kubernetes的一个API对象，用于管理集群外部对集群内部服务的HTTP和HTTPS路由。Ingress提供了一种集中定义路由规则的方式，使得来自集群外部的请求能够被正确地转发到集群内部的服务上。Ingress需要配合Ingress Controller一起使用，Ingress Controller是一个负责监听Ingress对象并据其配置转发规则的组件。Service是Kubernetes中的另一个API对象，用于为Pod提供稳定的网络访问地址。Ingress通常会将请求转发到某个Service上，再由Service将请求分发到具体的Pod上。
 
-# https://zhuanlan.zhihu.com/p/678551905
+### 爆肝整理的100+道k8s运维面试题，建议收藏！
+
+https://zhuanlan.zhihu.com/p/678551905
 
 ### 1、简述ETCD及其特点?
 
