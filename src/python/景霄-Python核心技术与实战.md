@@ -6,7 +6,7 @@
 #     expanded: true
 #     link: true
 #     index: true
-title: jingxiao-Python核心技术与实战
+title: Python核心技术与实战-jingxiao
 index: true
 headerDepth: 3
 # icon: laptop-code
@@ -492,7 +492,7 @@ print(timeit.timeit("d = dict({'name': 'jason', 'age': 20, 'gender': 'male'})", 
 ```
 
 2. 字典的键可以是一个列表吗？下面这段代码中，字典的初始化是否正确呢？如果不正
-  确，可以说出你的原因吗？
+    确，可以说出你的原因吗？
 
 ```python
 d = {'name': 'jason', ['education']: ['Tsinghua University', 'Stanford University']}
@@ -585,5 +585,736 @@ Python 中字符串的改变，通常只能通过创建新的字符串来完成�
 ```python
 s = 'H' + s[1:]
 s = s.replace('h', 'H')
+```
+
+使用加法操作符'+='的字符串拼接方法。因为它是一个例外，打破了字符串不可变的特性。
+
+```python
+str1 += str2 # 表示 str1 = str1 + str2
+```
+
+```python
+s = ''
+for n in range(0, 100000):
+    s += str(n)
+```
+
+除了使用加法操作符，我们还可以使用字符串内置的 join 函数。string.join(iterable)，表示把每个元素都按照指定的格式连接起来。
+
+```python
+l = []
+for n in range(0, 100000):
+    l.append(str(n))
+l = ' '.join(l)
+```
+
+由于列表的 append 操作是 O(1) 复杂度，字符串同理。因此，这个含有 for 循环例子的时间复杂度为 n*O(1)=O(n)。
+
+字符串的分割函数 split()。string.split(separator)，表示把字符串按照 separator 分割成子字符串，并返回一个分割后子字符串组合的列表。它常常应用于对数据的解析处理，比如我们读取了某个文件的路径，想要调用数据库的 API，去读取对应的数据，我们通常会写成下面这样：
+
+```python
+def query_data(namespace, table):
+    """
+    given namespace and table, query database to get corresponding
+    data
+    """
+path = 'hive://ads/training_table'
+namespace = path.split('//')[1].split('/')[0] # 返回'ads'
+table = path.split('//')[1].split('/')[1] # 返回 'training_table'
+data = query_data(namespace, table)
+```
+
+此外，常见的函数还有：
+
+string.strip(str)，表示去掉首尾的 str 字符串；
+string.lstrip(str)，表示只去掉开头的 str 字符串；
+string.rstrip(str)，表示只去掉尾部的 str 字符串。
+
+这些在数据的解析处理中同样很常见。比如很多时候，从文件读进来的字符串中，开头和结尾都含有空字符，我们需要去掉它们，就可以用 strip() 函数：
+
+```python
+s = ' my name is jason '
+s.strip()
+'my name is jason'
+```
+
+Python 中字符串还有很多常用操作，比如，string.find(sub, start, end)，表示从start 到 end 查找字符串中子字符串 sub 的位置等等。
+
+### 字符串的格式化
+
+举一个常见的例子。比如我们有一个任务，给定一个用户的 userid，要去数据库中查询该用户的一些信息，并返回。而如果数据库中没有此人的信息，我们通常会记录下来，这样有利于往后的日志分析，或者是线上 bug 的调试等等。
+
+我们通常会用下面的方法来表示：
+
+```python
+print('no data available for person with id: {}, name: {}'.format(id, name))
+```
+
+其中的 string.format()，就是所谓的格式化函数；而大括号{}就是所谓的格式符，用来为后面的真实值——变量 name 预留位置。如果id = '123'、name='jason'，那么输出便是：
+
+```python
+'no data available for person with id: 123, name: jason'
+```
+
+string.format() 是最新的字符串格式函数与规范。自然，我们还有其他的表示方法，比如在 Python 之前版本中，字符串格式化通常用 % 来表示，那么上述的例子，就可以写成下面这样：
+
+```python
+print('no data available for person with id: %s, name: %s' % (id, name))
+```
+
+其中 %s 表示字符串型，%d 表示整型等等
+
+推荐使用 format 函数，毕竟这是最新规范，也是官方文档推荐的规范。
+
+在新版本的 Python（2.5+）中，下面的两个字符串拼接操作，你觉得哪个更优呢？
+
+```python
+for n in range(0, 100000):
+    s += str(n)	
+    
+536ms
+```
+
+```python
+l = []
+for n in range(0, 100000):
+    l.append(str(n))
+s = ' '.join(l)
+
+26ms
+```
+
+## 06 | Python “黑箱”：输入与输出
+
+### 输入输出基础
+
+```python
+name = input('your name:')
+gender = input('you are a boy?(y/n)')
+###### 输入 ######
+your name:Jack
+you are a boy?
+
+welcome_str = 'Welcome to the matrix {prefix} {name}.'
+welcome_dic = {
+    'prefix': 'Mr.' if gender == 'y' else 'Mrs',
+    'name': name
+}
+print('authorizing...')
+print(welcome_str.format(**welcome_dic))
+
+########## 输出 ##########
+authorizing...
+Welcome to the matrix Mr. Jack.
+```
+
+```python
+a = input()
+1
+b = input()
+2
+print('a + b = {}'.format(a + b))
+########## 输出 ##############
+a + b = 12
+print('type of a is {}, type of b is {}'.format(type(a), type(b)))
+########## 输出 ##############
+type of a is <class 'str'>, type of b is <class 'str'>
+print('a + b = {}'.format(int(a) + int(b)))
+########## 输出 ##############
+a + b = 3
+```
+
+把 str 强制转换为 int 请用 int()，转为浮点数请用 float()。而在生产环境中使用强制转换时，请记得加上 try except
+
+Python 对 int 类型没有最大限制（相比之下， C++ 的 int 最大为 2147483647，超过这个数字会产生溢出），但是对 float 类型依然有精度限制。这些特点，除了在一些算法竞赛中要注意，在生产环境中也要时刻提防，避免因为对边界条件判断不清而造成 bug 甚至0day（危重安全漏洞）。
+
+2018 年 4 月 23 日中午 11 点 30 分左右，BEC 代币智能合约被黑客攻击。黑客利用数据溢出的漏洞，攻击与美图合作的公司美链 BEC 的智能合约，成功地向两个地址转出了天量级别的 BEC 代币，导致市场上的海量 BEC 被抛售，该数字货币的价值也几近归零，给 BEC 市场交易带来了毁灭性的打击
+
+### 文件输入输出
+
+做一个简单的 NLP（自然语言处理）任务。
+
+NLP 任务的基本步骤，也就是下面的四步：
+1. 读取文件；
+2. 去除所有标点符号和换行符，并把所有大写变成小写；
+3. 合并相同的词，统计每个词出现的频率，并按照词频从大到小排序；
+4. 将结果按行输出到文件 out.txt。
+
+```python
+import re
+# 你不用太关心这个函数
+def parse(text):
+    # 使用正则表达式去除标点符号和换行符
+    text = re.sub(r'[^\w ]', ' ', text)
+    # 转为小写
+    text = text.lower()
+    # 生成所有单词的列表
+    word_list = text.split(' ')
+    # 去除空白单词
+    word_list = filter(None, word_list)
+    # 生成单词和词频的字典
+    word_cnt = {}
+    for word in word_list:
+        if word not in word_cnt:
+            word_cnt[word] = 0
+        word_cnt[word] += 1
+    # 按照词频排序
+    sorted_word_cnt = sorted(word_cnt.items(), key=lambda kv: kv[1], reverse=True)
+    return sorted_word_cnt
+with open('in.txt', 'r') as fin:
+    text = fin.read()
+word_and_freq = parse(text)
+with open('out.txt', 'w') as fout:
+    for word, freq in word_and_freq:
+        fout.write('{} {}\n'.format(word, freq))
+        
+########## 输出 (省略较长的中间结果) ##########
+and 15
+be 13
+will 11
+to 11
+the 10
+of 10
+a 8
+we 8
+day 6
+...
+old 1
+negro 1
+spiritual 1
+thank 1
+god 1
+almighty 1
+are 1
+```
+
+先要用 open() 函数拿到文件的指针。其中，第一个参数指定文件位置（相对位置或者绝对位置）；第二个参数，如果是 'r'表示读取，如果是'w' 则表示写入，当然也可以用'rw' ，表示读写都要。a 则是一个不太常用（但也很有用）的参数，表示追加（append），这样打开的文件，如果需要写入，会从原始文件的最末尾开始写入。
+
+在拿到指针后，我们可以通过 read() 函数，来读取文件的全部内容。代码 text = fin.read() ，即表示把文件所有内容读取到内存中，并赋值给变量 text。这么做自然也是有利有弊：
+
+优点是方便，接下来我们可以很方便地调用 parse 函数进行分析；
+缺点是如果文件过大，一次性读取可能造成内存崩溃。
+
+这时，我们可以给 read 指定参数 size ，用来表示读取的最大长度。还可以通过 readline()函数，每次读取一行，这种做法常用于数据挖掘（Data Mining）中的数据清洗，在写一些小的程序时非常轻便。如果每行之间没有关联，这种做法也可以降低内存的压力。而write() 函数，可以把参数中的字符串输出到文件中，也很容易理解。
+
+open() 函数对应于 close() 函数，也就是说，如果你打开了文件，在完成读取任务后，就应该立刻关掉它。而如果你使用了with 语句，就不需要显式调用 close()。在 with 的语境下任务执行完毕后，close() 函数会被自动调用，代码也简洁很多。
+最后需要注意的是，所有 I/O 都应该进行错误处理。因为 I/O 操作可能会有各种各样的情况出现，而一个健壮（robust）的程序，需要能应对各种情况的发生，而不应该崩溃（故意设计的情况除外）。
+
+### JSON 序列化与实战
+
+设想一个情景，你要向交易所购买一定数额的股票。那么，你需要提交股票代码、方向（买入 / 卖出）、订单类型（市价 / 限价）、价格（如果是限价单）、数量等一系列参数，而这些数据里，有字符串，有整数，有浮点数，甚至还有布尔型变量，全部混在一起并不方便
+交易所解包。
+
+你可以把它简单地理解为两种黑箱：
+
+第一种，输入这些杂七杂八的信息，比如 Python 字典，输出一个字符串；
+第二种，输入这个字符串，可以输出包含原始信息的 Python 字典。
+
+```python
+import json
+params = {
+    'symbol': '123456',
+    'type': 'limit',
+    'price': 123.4,
+    'amount': 23
+}
+params_str = json.dumps(params)
+print('after json serialization')
+print('type of params_str = {}, params_str = {}'.format(type(params_str), params_str))  # 修复为 params_str
+original_params = json.loads(params_str)
+print('after json deserialization')
+print('type of original_params = {}, original_params = {}'.format(type(original_params), original_params))  # 添加 original_params
+
+# 输出
+after json serialization
+type of params_str = <class 'str'>, params_str = {"symbol": "123456", "type": "limit", "price": 123.4, "amount": 23}
+after json deserialization
+type of original_params = <class 'dict'>, original_params = {'symbol': '123456', 'type': 'limit', 'price': 123.4, 'amount': 23}
+```
+
+json.dumps() 这个函数，接受 Python 的基本数据类型，然后将其序列化为 string；
+而 json.loads() 这个函数，接受一个合法字符串，然后将其反序列化为 Python 的基本数据类型。
+
+记得加上错误处理。不然，哪怕只是给 json.loads() 发送了一个非法字符串，而你没有 catch 到，程序就会崩溃了。
+
+如果我要输出字符串到文件，或者从文件中读取 JSON 字符串，又该怎么办呢？
+
+你仍然可以使用上面提到的 open() 和 read()/write() ，先将字符串读取 / 输出到内存，再进行 JSON 编码 / 解码，当然这有点麻烦。
+
+```python
+import json
+params = {
+    'symbol': '123456',
+    'type': 'limit',
+    'price': 123.4,
+    'amount': 23
+}
+with open('params.json', 'w') as fout:
+    params_str = json.dump(params, fout)
+with open('params.json', 'r') as fin:
+    original_params = json.load(fin)
+print('after json deserialization')
+print('type of original_params = {}, original_params = {}'.format(type(original_params), original_params))  # 添加 original_params
+
+# 输出
+after json deserialization
+type of original_params = <class 'dict'>, original_params = {'symbol': '123456', 'type': 'limit', 'price': 123.4, 'amount': 23}
+```
+
+当开发一个第三方应用程序时，你可以通过 JSON 将用户的个人配置输出到文件，方便下次程序启动时自动读取。这也是现在普遍运用的成熟做法。
+
+在 Google，有类似的工具叫做 Protocol Buffer，当然，Google 已经完全开源了这个工具，你可以自己了解一下使用方法。
+
+相比于 JSON，它的优点是生成优化后的二进制文件，因此性能更好。但与此同时，生成的二进制序列，是不能直接阅读的。它在 TensorFlow 等很多对性能有要求的系统中都有广泛的应用。
+
+第一问：你能否把 NLP 例子中的 word count 实现一遍？不过这次，in.txt 可能非常非常大（意味着你不能一次读取到内存中），而 output.txt 不会很大（意味着重复的单词数量很多）。
+
+提示：你可能需要每次读取一定长度的字符串，进行处理，然后再读取下一次的。但是如果
+单纯按照长度划分，你可能会把一个单词隔断开，所以需要细心处理这种边界情况。
+
+```python
+```
+
+第二问：你应该使用过类似百度网盘、Dropbox 等网盘，但是它们可能空间有限（比如5GB）。如果有一天，你计划把家里的 100GB 数据传送到公司，可惜你没带 U 盘，于是你想了一个主意：
+
+每次从家里向 Dropbox 网盘写入不超过 5GB 的数据，而公司电脑一旦侦测到新数据，就立即拷贝到本地，然后删除网盘上的数据。等家里电脑侦测到本次数据全部传入公司电脑后，再进行下一次写入，直到所有数据都传输过去。
+
+根据这个想法，你计划在家写一个 server.py，在公司写一个 client.py 来实现这个需求。
+
+提示：我们假设每个文件都不超过 5GB。
+
+你可以通过写入一个控制文件（config.json）来同步状态。不过，要小心设计状态，这里有可能产生 race condition。
+你也可以通过直接侦测文件是否产生，或者是否被删除来同步状态，这是最简单的做法。
+
+## 07 | 修炼基本功：条件与循环
+
+![image-20250326135105837](https://b2files.173114.xyz/blogimg/2025/03/89c56913bf12dbfdb6ca56f9dc6bfa99.png)
+
+### 循环语句
+
+```python
+l = [1, 2, 3, 4]
+for item in l:
+    print(item)
+
+# 输出
+1
+2
+3
+4
+```
+
+字典本身只有键是可迭代的，如果我们要遍历它的值或者是键值对，就需要通过其内置的函数 values() 或者 items() 实现。其中，values() 返回字典的值的集合，items() 返回键值对的集合。
+
+```python
+d = {'name': 'jason', 'dob': '2000-01-01', 'gender': 'male'}
+for k in d: # 遍历字典的键
+    print(k)
+    
+name
+dob
+gender
+```
+
+```python
+for v in d.values(): # 遍历字典的值
+    print(v)
+    
+jason
+2000-01-01
+male
+```
+
+```python
+for k, v in d.items(): # 遍历字典的键值对
+    print('key: {}, value: {}'.format(k, v))
+
+key: name, value: jason
+key: dob, value: 2000-01-01
+key: gender, value: male
+```
+
+我们通常通过 range() 这个函数，拿到索引，再去遍历访问集合中的元素。比如下面的代码，遍历一个列表中的元素，当索引小于 5 时，打印输出：
+
+```python
+l = [1, 2, 3, 4, 5, 6, 7]
+for index in range(0, len(l)):
+    if index < 5:
+        print(l[index])
+        
+1
+2
+3
+4
+5
+```
+
+当我们同时需要索引和元素时，还有一种更简洁的方式，那就是通过 Python 内置的函数enumerate()。
+
+```python
+l = [1, 2, 3, 4, 5, 6, 7]
+for index, item in enumerate(l):
+    if index < 5:
+        print(item)
+        
+1
+2
+3
+4
+5
+```
+
+在循环语句中，我们还常常搭配 continue 和 break 一起使用。所谓 continue，就是让程序跳过当前这层循环，继续执行下面的循环；而 break 则是指完全跳出所在的整个循环体。在循环中适当加入 continue 和 break，往往能使程序更加简洁、易读。
+
+比如，给定两个字典，分别是产品名称到价格的映射，和产品名称到颜色列表的映射。我们要找出价格小于 1000，并且颜色不是红色的所有产品名称和颜色的组合。如果不用continue，代码应该是下面这样的：
+
+```python
+# name_price: 产品名称 (str) 到价格 (int) 的映射字典
+# name_color: 产品名字 (str) 到颜色 (list of str) 的映射字典
+for name, price in name_price.items():
+    if price < 1000:
+        if name in name_color:
+            for color in name_color[name]:
+                if color != 'red':
+                    print('name: {}, color: {}'.format(name, color))
+                else:
+                    print('name: {}, color: {}'.format(name, 'None'))
+```
+
+而加入 continue 后，代码显然清晰了很多：
+
+```python
+# name_price: 产品名称 (str) 到价格 (int) 的映射字典
+# name_color: 产品名字 (str) 到颜色 (list of str) 的映射字典
+for name, price in name_price.items():
+    if price >= 1000:
+        continue
+    if name not in name_color:
+        print('name: {}, color: {}'.format(name, 'None'))
+        continue
+    for color in name_color[name]:
+        if color == 'red':
+            continue
+        print('name: {}, color: {}'.format(name, color))
+```
+
+通常来说，如果你只是遍历一个已知的集合，找出满足条件的元素，并进行相应的操作，那么使用 for 循环更加简洁。但如果你需要在满足某个条件前，不停地重复某些操作，并且没有特定的集合需要去遍历，那么一般则会使用 while 循环。
+比如，某个交互式问答系统，用户输入文字，系统会根据内容做出相应的回答。为了实现这个功能，我们一般会使用 while 循环，大致代码如下：
+
+```python
+while True:
+    try:
+        text = input('Please enter your questions, enter "q" to exit')
+        if text == 'q':
+            print('Exit system')
+            break
+        ...
+        ...
+        print(response)
+    except as err:
+        print('Encountered error: {}'.format(err))
+    break
+```
+
+同时需要注意的是，for 循环和 while 循环的效率问题。比如下面的 while 循环：
+
+```python
+i = 0
+while i < 1000000:
+    i += 1
+```
+
+```python
+for i in range(0, 1000000):
+    pass
+```
+
+要知道，range() 函数是直接由 C 语言写的，调用它速度非常快。而 while 循环中的“i+= 1”这个操作，得通过 Python 的解释器间接调用底层的 C 语言；并且这个简单的操作，又涉及到了对象的创建和删除（因为 i 是整型，是 immutable，i += 1 相当于 i =new int(i + 1)）。所以，显然，for 循环的效率更胜一筹。
+
+### 条件与循环的复用
+
+给定下面两个列表 attributes 和 values，要求针对 values 中每一组子列表 value，输出其和 attributes 中的键对应后的字典，最后返回字典组成的列表。
+
+```python
+attributes = ['name', 'dob', 'gender']
+values = [['jason', '2000-01-01', 'male'],
+['mike', '1999-01-01', 'male'],
+['nancy', '2001-02-01', 'female']
+]
+# expected outout:
+[{'name': 'jason', 'dob': '2000-01-01', 'gender': 'male'},
+{'name': 'mike', 'dob': '1999-01-01', 'gender': 'male'},
+{'name': 'nancy', 'dob': '2001-02-01', 'gender': 'female'}]
+```
+
+```python
+attributes = ['name', 'dob', 'gender']
+values = [['jason', '2000-01-01', 'male'],
+['mike', '1999-01-01', 'male'],
+['nancy', '2001-02-01', 'female']
+]
+
+# Method 1: Using list comprehension with zip
+result1 = [dict(zip(attributes, value)) for value in values]
+
+# Print the result
+print(result1)
+
+# Method 2: Using a loop
+result2 = []
+for value in values:
+    person = {}
+    for i in range(len(attributes)):
+        person[attributes[i]] = value[i]
+    result2.append(person)
+
+# Print the result
+print(result2)
+
+```
+
+## 08 | 异常处理：如何提高程序的稳定性？
+
+下面两种写法，你觉得哪种更好呢？
+
+第一种：
+
+```py
+try:
+    db = DB.connect('<db path>') # 可能会抛出异常
+	raw_data = DB.queryData('<viewer_id>') # 可能会抛出异常
+except (DBConnectionError, DBQueryDataError) err:
+    print('Error: {}'.format(err))
+```
+
+第二种：
+
+```python
+try:
+    db = DB.connect('<db path>') # 可能会抛出异常
+    try:
+        raw_data = DB.queryData('<viewer_id>')
+    except DBQueryDataError as err:
+        print('DB query data error: {}'.format(err))
+except DBConnectionError as err:
+    print('DB connection error: {}'.format(err))
+```
+
+第一种写法更加简洁，易于阅读。而且except后面的错误类型先抛出数据库连接错误，之后才抛出查询错误，实现的异常处理和第二种一样。
+
+## 09 | 不可或缺的自定义函数
+
+### 函数基础
+
+```python
+def my_func(message):
+    print('Got a message: {}'.format(message))
+# 调用函数 my_func()
+my_func('Hello World')
+
+
+# 输出
+Got a message: Hello World
+```
+
+总结一下，大概是下面的这种形式：
+
+```py
+def name(param1, param2, ..., paramN):
+    statements
+    return/yield value # optional
+```
+
+```python
+def my_sum(a, b):
+    return a + b
+result = my_sum(3, 5)
+print(result)
+print(my_sum([1, 2], [3, 4]))
+print(my_sum('hello ', 'world'))
+
+
+8
+[1, 2, 3, 4]
+hello world
+```
+
+```python
+def find_largest_element(l):
+    if not isinstance(l, list):
+        print('input is not type of list')
+        return
+    if len(l) == 0:
+        print('empty input')
+        return
+    largest_element = l[0]
+    for item in l:
+        if item > largest_element:
+            largest_element = item
+    print('largest element is: {}'.format(largest_element))
+find_largest_element([8, 1,-3, 2, 0])
+
+
+largest element is: 8
+```
+
+如果我们在函数内部调用其他函数，函数间哪个声明在前、哪个在后就无所谓，因为def 是可执行语句，函数在调用之前都不存在，我们只需保证调用时，所需的函数都已经声明定义：
+
+```py
+def my_func(message):
+    my_sub_func(message) # 调用 my_sub_func() 在其声明之前不影响程序执行
+def my_sub_func(message):
+    print('Got a message: {}'.format(message))
+my_func('hello world')
+
+Got a message: hello world
+```
+
+Python 函数的参数可以设定默认值，比如下面这样的写法：
+
+```python
+def func(param = 0):
+    ...
+```
+
+
+
+```python
+def f1():
+    print('hello')
+    def f2():
+        print('world')
+    f2()
+f1()
+
+hello
+world
+```
+
+函数的嵌套，主要有下面两个方面的作用。
+
+第一，函数的嵌套能够保证内部函数的隐私。内部函数只能被外部函数所调用和访问，不会暴露在全局作用域，因此，如果你的函数内部有一些隐私数据（比如数据库的用户、密码等），不想暴露在外，那你就可以使用函数的的嵌套，将其封装在内部函数中，只通过外部函数来访问。比如：
+
+```python
+def connect_DB():
+    def get_DB_configuration():
+        ...
+        return host, username, password
+    conn = connector.connect(get_DB_configuration())
+    return conn
+```
+
+这里的函数 get_DB_configuration，便是内部函数，它无法在 connect_DB() 函数以外被单独调用。也就是说，下面这样的外部直接调用是错误的：
+
+```python
+get_DB_configuration()
+# 输出
+NameError: name 'get_DB_configuration' is not defined
+```
+
+我们只能通过调用外部函数 connect_DB() 来访问它，这样一来，程序的安全性便有了很大的提高。
+
+第二，合理的使用函数嵌套，能够提高程序的运行效率。我们来看下面这个例子：
+
+```python
+def factorial(input):
+    # validation check
+    if not isinstance(input, int):
+        raise Exception('input must be an integer.')
+    if input < 0:
+        raise Exception('input must be greater or equal to 0' )
+    ...
+    def inner_factorial(input):
+        if input <= 1:
+            return 1
+        return input * inner_factorial(input-1)
+    return inner_factorial(input)
+print(factorial(5))
+```
+
+这里，我们使用递归的方式计算一个数的阶乘。因为在计算之前，需要检查输入是否合法，所以我写成了函数嵌套的形式，这样一来，输入是否合法就只用检查一次。而如果我们不使用函数嵌套，那么每调用一次递归便会检查一次，这是没有必要的，也会降低程序的运行效率。
+实际工作中，如果你遇到相似的情况，输入检查不是很快，还会耗费一定的资源，那么运用函数的嵌套就十分必要了。
+
+### 函数变量作用域
+
+如果变量是在函数内部定义的，就称为局部变量，只在函数内部有效。一旦函数执行完毕，局部变量就会被回收，无法访问，比如下面的例子：
+
+```python
+def read_text_from_file(file_path):
+    with open(file_path) as file:
+        ...
+```
+
+我们在函数内部定义了 file 这个变量，这个变量只在 read_text_from_file 这个函数里有效，在函数外部则无法访问。
+
+相对应的，全局变量则是定义在整个文件层次上的，比如下面这段代码：
+
+```python
+MIN_VALUE = 1
+MAX_VALUE = 10
+def validation_check(value):
+    if value < MIN_VALUE or value > MAX_VALUE:
+        raise Exception('validation check fails')
+```
+
+### 闭包
+
+闭包其实和刚刚讲的嵌套函数类似，不同的是，这里外部函数返回的是一个函数，而不是一个具体的值。返回的函数通常赋于一个变量，这个变量可以在后面被继续执行调用。
+
+比如，我们想计算一个数的 n 次幂，用闭包可以写成下面的代码：
+
+```python
+def nth_power(exponent):
+    def exponent_of(base):
+        return base ** exponent
+    return exponent_of # 返回值是 exponent_of 函数
+square = nth_power(2) # 计算一个数的平方
+cube = nth_power(3) # 计算一个数的立方
+square
+# 
+<function __main__.nth_power.<locals>.exponent_of(base)>
+
+cube
+<function __main__.nth_power.<locals>.exponent_of(base)>
+
+print(square(2)) # 计算 2 的平方
+print(cube(2)) # 计算 2 的立方
+
+4
+8
+```
+
+## 10 | 简约不简单的匿名函数
+
+```python
+lambda argument1, argument2,... argumentN : expression
+```
+
+```python
+square = lambda x: x**2
+square(3)
+
+9
+
+def square(x):
+    return x**2
+square(3)
+
+9
+```
+
+```python
+[(lambda x: x*x)(x) for x in range(10)]
+# 输出
+[0, 1, 4, 9, 16, 25, 36, 49, 64, 81]
+```
+
+```python
+l = [(1, 20), (3, 0), (9, 10), (2, -1)]
+l.sort(key=lambda x: x[1]) # 按列表中元祖的第二个元素排序
+print(l)
+# 输出
+[(2, -1), (3, 0), (9, 10), (1, 20)]
+
 ```
 
