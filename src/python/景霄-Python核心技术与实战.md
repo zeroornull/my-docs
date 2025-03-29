@@ -1318,3 +1318,148 @@ print(l)
 
 ```
 
+```python
+# 在 Python 的 Tkinter GUI 应用中，我们想实现这样一个简单的功能：创建显示一个按钮，每当用户点击时，就打印出一段文字。如果使用 lambda 函数可以表示成下面这样：
+from tkinter import Button, mainloop
+button = Button(
+    text='This is a button',
+    command=lambda: print('being pressed')) # 点击时调用 lambda 函数
+button.pack()
+mainloop()
+
+# 而如果我们用常规函数 def，那么需要写更多的代码：
+from tkinter import Button, mainloop
+def print_message():
+    print('being pressed')
+button = Button(
+    text='This is a button',
+    command=print_message) # 点击时调用 lambda 函数
+button.pack()
+mainloop()
+```
+
+### Python 函数式编程
+
+所谓函数式编程，是指代码中每一块都是不可变的（immutable），都由纯函数（purefunction）的形式组成。这里的纯函数，是指函数本身相互独立、互不影响，对于相同的输入，总会有相同的输出，没有任何副作用。
+
+```python
+l = [1, 2, 3, 4, 5]
+new_list = map(lambda x: x * 2, l) # [2， 4， 6， 8， 10]
+```
+
+```python
+python3 -mtimeit -s'xs=range(1000000)' 'map(lambda x: x*2, xs)'
+2000000 loops, best of 5: 171 nsec per loop
+python3 -mtimeit -s'xs=range(1000000)' '[x * 2 for x in xs]'
+5 loops, best of 5: 62.9 msec per loop
+python3 -mtimeit -s'xs=range(1000000)' 'l = []' 'for i in xs: l.append(i * 2)'
+5 loops, best of 5: 92.7 msec per loop
+```
+
+map() 是最快的。因为 map() 函数直接由 C 语言写的，运行时不需要通过Python 解释器间接调用，并且内部做了诸多优化，所以运行速度最快。
+
+filter() 函数表示对 iterable 中的每个元素，都使用 function 判断，并返回True 或者 False，最后将返回 True 的元素组成一个新的可遍历的集合。
+
+```python
+l = [1, 2, 3, 4, 5]
+new_list = filter(lambda x: x % 2 == 0, l) # [2, 4]
+```
+
+举个例子，我想要计算某个列表元素的乘积，就可以用 reduce() 函数来表示：
+
+```python
+l = [1, 2, 3, 4, 5]
+product = reduce(lambda x, y: x * y, l) # 1*2*3*4*5 = 120
+```
+
+当然，类似的，filter() 和 reduce() 的功能，也可以用 for 循环或者 list comprehension来实现。
+通常来说，在我们想对集合中的元素进行一些操作时，如果操作非常简单，比如相加、累积这种，那么我们优先考虑 map()、filter()、reduce() 这类或者 list comprehension 的形式。至于这两种方式的选择：
+
+在数据量非常多的情况下，比如机器学习的应用，那我们一般更倾向于函数式编程的表示，因为效率更高；
+在数据量不多的情况下，并且你想要程序更加 Pythonic 的话，那么 listcomprehension 也不失为一个好选择。
+
+如果你要对集合中的元素，做一些比较复杂的操作，那么，考虑到代码的可读性，我们通常会使用 for 循环，这样更加清晰明了。
+
+如果让你对一个字典，根据值进行由高到底的排序，该怎么做呢？以下面这段代码为例，你可以思考一下。
+
+```python
+d = {'mike': 10, 'lucy': 2, 'ben': 30}
+sorted_d = dict(sorted(d.items(), key=lambda x: x[1], reverse=True))
+print(sorted_d)  # 输出: {'ben': 30, 'mike': 10, 'lucy': 2}
+```
+
+在实际工作学习中，你遇到过哪些使用匿名函数的场景呢？
+
+## 11 | 面向对象（上）：从生活中的类比说起
+
+```python
+class Document():
+    def __init__(self, title, author, context):
+        print('init function called')
+        self.title = title
+        self.author = author
+        self.__context = context # __ 开头的属性是私有属性
+    def get_context_length(self):
+        return len(self.__context)
+    def intercept_context(self, length):
+        self.__context = self.__context[:length]
+harry_potter_book = Document('Harry Potter', 'J. K. Rowling', '... Forever Do not believ')
+print(harry_potter_book.title)
+print(harry_potter_book.author)
+print(harry_potter_book.get_context_length())
+harry_potter_book.intercept_context(10)
+print(harry_potter_book.get_context_length())
+print(harry_potter_book.__context)
+
+
+init function called
+Harry Potter
+J. K. Rowling
+25
+10
+
+---------------------------------------------------------------------------
+AttributeError                            Traceback (most recent call last)
+Cell In[7], line 17
+     15 harry_potter_book.intercept_context(10)
+     16 print(harry_potter_book.get_context_length())
+---> 17 print(harry_potter_book.__context)
+
+AttributeError: 'Document' object has no attribute '__context'
+```
+
+如何在一个类中定义一些常量，每个对象都可以方便访问这些常量而不用重新构造？
+如果一个函数不涉及到访问修改这个类的属性，而放到类外面有点不恰当，怎么做才能更优雅呢？
+既然类是一群相似的对象的集合，那么可不可以是一群相似的类的集合呢？
+
+```python
+class Document():
+    WELCOME_STR = 'Welcome! The context for this book is {}.'
+    def __init__(self, title, author, context):
+        print('init function called')
+        self.title = title
+        self.author = author
+        self.__context = context
+    # 类函数
+    @classmethod
+    def create_empty_book(cls, title, author):
+        return cls(title=title, author=author, context='nothing')
+# 成员函数
+    def get_context_length(self):
+        return len(self.__context)
+# 静态函数
+    @staticmethod
+    def get_welcome(context):
+        return Document.WELCOME_STR.format(context)
+empty_book = Document.create_empty_book('What Every Man Thinks About Apart from Sex', 'Professor Sheridan Simove')
+print(empty_book.get_context_length())
+print(empty_book.get_welcome('indeed nothing'))
+
+########## 输出 ##########
+
+init function called
+7
+Welcome! The context for this book is indeed nothing.
+
+```
+
