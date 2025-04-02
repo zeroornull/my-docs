@@ -1392,6 +1392,8 @@ print(sorted_d)  # 输出: {'ben': 30, 'mike': 10, 'lucy': 2}
 
 ## 11 | 面向对象（上）：从生活中的类比说起
 
+### 对象，你找到了吗？
+
 ```python
 class Document():
     def __init__(self, title, author, context):
@@ -1461,5 +1463,194 @@ init function called
 7
 Welcome! The context for this book is indeed nothing.
 
+```
+
+### 继承，是每个富二代的梦想
+
+```python
+class Entity:
+    def __init__(self, object_type):
+        print('parent calss init called')
+        self.object_type = object_type
+
+    def get_context_length(self):
+        raise Exception('get_context_length not implemented')
+
+    def print_title(self):
+        print(self.title)
+
+
+class Document(Entity):
+    def __init__(self, title, author, context):
+        print('Document class init called')
+        Entity.__init__(self, 'document')
+        self.title = title
+        self.author = author
+        self.__context = context
+
+    def get_context_length(self):
+        return len(self.__context)
+
+
+class Video(Entity):
+    def __init__(self, title, author, video_length):
+        print('Video class init called')
+        Entity.__init__(self, 'video')
+        self.title = title
+        self.author = author
+        self.__video_length = video_length
+
+    def get_context_length(self):
+        return self.__video_length
+
+
+harry_potter_book = Document('Harry Potter(Book)', 'J. K. Rowling',
+                             '... Forever Do not believe any thing is capable of thinking independently ...')
+harry_potter_movie = Video('Harry Potter(Movie)', 'J. K. Rowling', 120)
+
+print(harry_potter_book.object_type)
+print(harry_potter_movie.object_type)
+
+harry_potter_book.print_title()
+harry_potter_movie.print_title()
+
+print(harry_potter_book.get_context_length())
+print(harry_potter_movie.get_context_length())
+
+Document class init called
+parent calss init called
+Video class init called
+parent calss init called
+document
+video
+Harry Potter(Book)
+Harry Potter(Movie)
+77
+120
+
+```
+
+每个类都有构造函数，继承类在生成对象的时候，是不会自动调用父类的构造函数的，因此你必须在 init() 函数中显式调用父类的构造函数。它们的执行顺序是 子类的构造函数 -> 父类的构造函数。
+
+既然你能通过继承一个类，来获得父类的函数和属性，那么你能继承两个吗？答案自是能的，这就叫做多重继承。那么问题来了。
+我们使用单一继承的时候，构造函数的执行顺序很好确定，即子类 -> 父类 -> 爷类 ->…的链式关系。不过，多重继承的时候呢？比如下面这个例子。
+
+```
+--->B---
+A-   -->D
+--->C---
+```
+
+这种继承方式，叫做菱形继承，BC 继承了 A，然后 D 继承了 BC，创造一个 D 的对象。那么，构造函数调用顺序又是怎样的呢？
+
+```python
+class A:
+    def __init__(self):
+        print("A 的构造函数被调用")
+
+class BC(A):
+    def __init__(self):
+        super().__init__()  # 调用父类 A 的构造函数
+        print("BC 的构造函数被调用")
+
+class D(BC):
+    def __init__(self):
+        super().__init__()  # 调用父类 BC 的构造函数
+        print("D 的构造函数被调用")
+
+# 创建 D 的对象
+d = D()
+
+
+A 的构造函数被调用
+BC 的构造函数被调用
+D 的构造函数被调用
+
+```
+
+## 12 | 面向对象（下）：如何实现一个搜索引擎？
+
+```
+1.txt
+I have a dream that my four little children will one day live in a nation where they will not be judged by the color of their skin but by the content of their character. I have a dream today.
+
+2.txt
+I have a dream that one day down in Alabama, with its vicious racists, . . . one day right there in Alabama little black boys and black girls will be able to join hands with little white boys and white girls as sisters and brothers. I have a dream today.
+
+3.txt
+I have a dream that one day every valley shall be exalted, every hill and mountain shall be made low, the rough places will be made plain, and the crooked places will be made straight, and the glory of the Lord shall be revealed, and all flesh shall see it together.
+
+4.txt
+This is our hope. . . With this faith we will be able to hew out of the mountain of despair a stone of hope. With this faith we will be able to transform the jangling discords of our nation into a beautiful symphony of brotherhood. With this faith we will be able to work together, to pray together, to struggle together, to go to jail together, to stand up for freedom together, knowing that we will be free one day. . . .
+
+5.txt
+And when this happens, and when we allow freedom ring, when we let it ring from every village and every hamlet, from every state and every city, we will be able to speed up that day when all of God's children, black men and white men, Jews and Gentiles, Protestants and Catholics, will be able to join hands and sing in the words of the old Negro spiritual: "Free at last! Free at last! Thank God Almighty, we are free at last!"
+```
+
+```python
+class SearchEngineBase(object):
+    def __init__(self):
+        pass
+
+    def add_corpus(self, file_path):
+        with open(file_path, 'r') as fin:
+            text = fin.read()
+        self.process_corpus(file_path, text)
+
+    def process_corpus(self, id, text):
+        raise Exception('process_corpus not implemented')
+
+    def search(self, query):
+        raise Exception('search not implemented')
+
+
+def main(search_engine):
+    for file_path in ['1.txt', '2.txt', '3.txt', '4.txt', '5.txt']:
+        search_engine.add_corpus(file_path)
+
+    while True:
+        query = input('请输入要搜索的关键词：')
+        results = search_engine.search(query)
+        print('found {} result(s):'.format(len(results)))
+        for result in results:
+            print(result)
+
+
+class SimpleEngine(SearchEngineBase):
+    def __init__(self):
+        super(SimpleEngine, self).__init__()
+        self.__id_to_texts = {}
+
+    def process_corpus(self, id, text):
+        self.__id_to_texts[id] = text
+
+    def search(self, query):
+        results = []
+        for id, text in self.__id_to_texts.items():
+            if query in text:
+                results.append(id)
+        return results
+
+
+if __name__ == '__main__':
+    search_engine = SimpleEngine()
+    main(search_engine)
+```
+
+```python
+class SimpleEngine(SearchEngineBase):
+    def __init__(self):
+        super(SimpleEngine, self).__init__()
+        self.__id_to_texts = {}
+    def process_corpus(self, id, text):
+        self.__id_to_texts[id] = text
+    def search(self, query):
+        results = []
+        for id, text in self.__id_to_texts.items():
+            if query in text:
+                results.append(id)
+        return results
+search_engine = SimpleEngine()
+main(search_engine)
 ```
 
