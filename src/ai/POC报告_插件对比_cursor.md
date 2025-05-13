@@ -19,10 +19,19 @@ cursor 需要云端互联
 # IDEA+插件
 
 autodev 开源
+
 continue 开源
+
 copilot 闭源需要云端
+
+jetbrain AI
+
+jetbrain junie
+
 tabnine
+
 CodeGeeX
+
 # VSCODE+插件
 1、Java Extension Pack
 2、Maven for Java
@@ -46,7 +55,3 @@ Java Properties
 Eclipse Keymap for Visual Studio Code
 Lombok Annotations Support for VS Code
 # augment
-
-# 特殊类型 存在商用
-copilot
-jetbrain AI
