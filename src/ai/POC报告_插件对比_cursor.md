@@ -55,3 +55,25 @@ Java Properties
 Eclipse Keymap for Visual Studio Code
 Lombok Annotations Support for VS Code
 # augment
+
+
+
+**IntelliJ IDEA + 插件**:
+
+- 目前没有插件能完全替代 Cursor 的 Composer 和 Agent Mode。
+- **推荐**: 使用 **JetBrains AI Assistant** 或 **Supermaven**，并关注 **Junie** 的进展。
+- 适合依赖 IntelliJ IDEA 专业功能的开发者。
+
+**VS Code + 插件**:
+
+- 更接近 Cursor 的体验，尤其是 **GitHub Copilot**、**Cline** 和 **Void**。
+- 推荐:
+  - 商业化方案：GitHub Copilot（稳定，接近 Cursor 的补全和问答）。
+  - 开源方案：Void（隐私友好，支持本地模型）或 Gemini Coder（免费，基于 Gemini）。
+  - 代理功能：Cline（类似 Cursor 的 Agent Mode）。
+- 适合愿意配置插件并追求 Cursor 类似体验的开发者。
+
+**独立替代品**:
+
+- Windsurf 和 Trae 是 Cursor 的直接竞争者，功能接近且有独特优势。
+- 推荐尝试 Trae（免费，中文友好）或 Windsurf（代理功能强）。

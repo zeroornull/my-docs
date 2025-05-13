@@ -36,7 +36,7 @@ export default hopeTheme({
       },
       "/ai/POC报告_插件对比_cursor.html": {
         hint: "fgpg",
-        password: "fgpg",
+        password: "fgpgfgpg",
       },
     },
   },
