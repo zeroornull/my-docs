@@ -35,8 +35,8 @@ export default hopeTheme({
         password: "1234",
       },
       "/ai/POC报告_插件对比_cursor.html": {
-        hint: "Password: 1234",
-        password: "1234",
+        hint: "fgpg",
+        password: "fgpg",
       },
     },
   },
