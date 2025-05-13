@@ -21,6 +21,11 @@ export default navbar([
     link: "/python/",
     icon: "lightbulb",
   },
+  {
+    text: "AI",
+    link: "/ai/",
+    icon: "lightbulb",
+  },
   // {
   //   text: "指南",
   //   icon: "lightbulb",

@@ -32,4 +32,5 @@ export default sidebar({
   "/interview/": "structure",
   "/java/": "structure",
   "/python/": "structure",
+  "/ai/": "structure",
 });
