@@ -71,6 +71,28 @@ MarsCode(更名Trae Plugin)
 
 https://docs.trae.ai/plugin/what-is-trae-plugin
 
+Codeium windsurf同属公司
+
+aiXcoder
+
+IntelliCode
+
+Kodezi AI
+
+Mintlify Doc Writer
+
+Bito AI
+
+Fitten Code
+
+iFlyCode
+
+Comate
+
+Codefuse
+
+
+
 ### VS Code + 插件
 
 ### Java Development Plugins
@@ -111,7 +133,11 @@ GitHub: [cline/cline](https://github.com/cline/cline)
 
 https://github.com/voideditor/void
 
+## CodeBuddy
+
 # augment
+
+更偏向AI大模型调优而非工具
 
 
 # 对比报告
