@@ -33,4 +33,5 @@ export default sidebar({
   "/java/": "structure",
   "/python/": "structure",
   "/ai/": "structure",
+  "/front-end/": "structure",
 });

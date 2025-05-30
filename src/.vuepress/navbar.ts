@@ -26,6 +26,11 @@ export default navbar([
     link: "/ai/",
     icon: "lightbulb",
   },
+    {
+    text: "前端",
+    link: "/front-end/",
+    icon: "lightbulb",
+  },
   // {
   //   text: "指南",
   //   icon: "lightbulb",
