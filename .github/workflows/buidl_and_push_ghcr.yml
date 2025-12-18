@@ -1,4 +1,4 @@
-name: Build with Kaniko (Fixed)
+name: Build with Kaniko (Fixed URL)
 
 on:
   push:
@@ -17,25 +17,30 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build and Push
-        # 使用这个特殊的 Action，它只是一个本地 Shell 脚本包装，不需要从 GitHub 下载复杂的依赖
-        # 或者我们直接用 docker:// 语法（如下所示），这是最原生的
         uses: docker://gcr.io/kaniko-project/executor:v1.23.2-debug
-        env:
-          # 这里的技巧是：Kaniko 读取环境变量中的认证信息
-          # 我们不创建文件，直接把 Gitea Token 传进去（Kaniko 不直接支持 ENV 认证，所以要用 shell 这种 trick）
-          GIT_USERNAME: ${{ gitea.actor }}
-          GIT_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         with:
           entrypoint: /busybox/sh
           args: >-
             -c
-            "echo '{\"auths\":{\"${{ gitea.server_url }}\":{\"username\":\"${{ gitea.actor }}\",\"password\":\"${{ secrets.GITHUB_TOKEN }}\"}}}' > /kaniko/.docker/config.json
-            &&
-            /kaniko/executor
-            --context=.
-            --dockerfile=Dockerfile
-            --destination=${{ gitea.server_url }}/${{ gitea.actor }}/my-docs:latest
-            --destination=${{ gitea.server_url }}/${{ gitea.actor }}/my-docs:${{ github.sha }}
-            --insecure
-            --skip-tls-verify
-            --cache=true"
+            "
+            # 1. 清洗域名：去掉 http:// 或 https:// 前缀
+            SAFE_HOST=$(echo '${{ gitea.server_url }}' | sed 's|https\?://||')
+            
+            echo \"检测到的 Server URL: ${{ gitea.server_url }}\"
+            echo \"清洗后的 Hostname: \$SAFE_HOST\"
+            
+            # 2. 生成认证文件
+            # 注意：config.json 中的 auths key 最好保持完整 URL 或者与 destination 一致
+            # 这里我们尝试使用清洗后的域名作为 auth key，这样最稳妥
+            echo \"{\\\"auths\\\":{\\\"\$SAFE_HOST\\\":{\\\"username\\\":\\\"${{ gitea.actor }}\\\",\\\"password\\\":\\\"${{ secrets.GITHUB_TOKEN }}\\\"}}}\" > /kaniko/.docker/config.json
+            
+            # 3. 执行构建
+            /kaniko/executor \
+              --context=. \
+              --dockerfile=Dockerfile \
+              --destination=\$SAFE_HOST/${{ gitea.actor }}/my-docs:latest \
+              --destination=\$SAFE_HOST/${{ gitea.actor }}/my-docs:${{ github.sha }} \
+              --insecure \
+              --skip-tls-verify \
+              --cache=true
+            "
