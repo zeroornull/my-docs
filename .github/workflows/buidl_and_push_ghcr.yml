@@ -18,19 +18,45 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
       
+      - name: Debug Docker environment
+        run: |
+          echo "=== Current user info ==="
+          id
+          echo ""
+          echo "=== Environment variables ==="
+          env | grep -i docker || echo "No DOCKER_ env vars"
+          echo ""
+          echo "=== Search for docker.sock ==="
+          find / -name "docker.sock" 2>/dev/null || echo "Not found in filesystem"
+          echo ""
+          echo "=== Check common locations ==="
+          ls -la /var/run/docker.sock 2>/dev/null || echo "/var/run/docker.sock not found"
+          ls -la /run/docker.sock 2>/dev/null || echo "/run/docker.sock not found"
+          ls -la ~/.docker/ 2>/dev/null || echo "~/.docker/ not found"
+          echo ""
+          echo "=== Check if docker command exists ==="
+          which docker || echo "docker command not found"
+          echo ""
+          echo "=== Try docker version ==="
+          docker version 2>&1 || echo "docker version failed"
+          echo ""
+          echo "=== Check mount points ==="
+          mount | grep docker || echo "No docker mounts"
+      
       - name: Extract metadata
         id: meta
         run: |
           echo "date=$(date +'%Y%m%d-%H%M%S')" >> $GITHUB_OUTPUT
           echo "sha_short=$(echo ${GITHUB_SHA} | cut -c1-7)" >> $GITHUB_OUTPUT
       
-      - name: Build Docker image
-        run: |
-          docker build \
-            -t myapp:${{ steps.meta.outputs.sha_short }} \
-            -t myapp:latest \
-            -f Dockerfile \
-            .
+      # 暂时注释掉构建步骤，等调试完成后再启用
+      # - name: Build Docker image
+      #   run: |
+      #     docker build \
+      #       -t myapp:${{ steps.meta.outputs.sha_short }} \
+      #       -t myapp:latest \
+      #       -f Dockerfile \
+      #       .
       
-      - name: List images
-        run: docker images | grep myapp
+      # - name: List images
+      #   run: docker images | grep myapp
