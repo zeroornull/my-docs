@@ -35,7 +35,7 @@ jobs:
           
           # 关键修正 2：回归标准 GITHUB_TOKEN + gitea.actor
           # 配合上面的 permissions 配置，这是最不会出错的组合
-          echo "{\"auths\":{\"$HOST\":{\"username\":\"${{ gitea.actor }}\",\"password\":\"${{ secrets.GITHUB_TOKEN }}\"}}}" > $HOME/.docker/config.json
+          echo "{\"auths\":{\"$HOST\":{\"username\":\"${{ "gitea_admin" }}\",\"password\":\"${{ secrets.PACKAGES_TOKEN }}\"}}}" > $HOME/.docker/config.json
 
       - name: Build and Push with Kaniko
         uses: docker://gcr.io/kaniko-project/executor:debug
