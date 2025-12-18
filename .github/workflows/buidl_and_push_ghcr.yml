@@ -1,40 +1,17 @@
-name: Build with Kaniko (Fixed URL)
-
-on:
-  push:
-    branches: [ main ]
-  workflow_dispatch:
-
-permissions:
-  packages: write
-  contents: read
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Build and Push
+- name: Build and Push (Hardcoded Host)
         uses: docker://gcr.io/kaniko-project/executor:v1.23.2-debug
         with:
           entrypoint: /busybox/sh
           args: >-
             -c
             "
-            # 1. 清洗域名：去掉 http:// 或 https:// 前缀
-            SAFE_HOST=$(echo '${{ gitea.server_url }}' | sed 's|https\?://||')
+            # 直接填入你的内部域名，避免任何 Shell 解析问题
+            SAFE_HOST='gitea-http.gitea.svc.cluster.local:3000'
             
-            echo \"检测到的 Server URL: ${{ gitea.server_url }}\"
-            echo \"清洗后的 Hostname: \$SAFE_HOST\"
+            echo \"Using Host: \$SAFE_HOST\"
             
-            # 2. 生成认证文件
-            # 注意：config.json 中的 auths key 最好保持完整 URL 或者与 destination 一致
-            # 这里我们尝试使用清洗后的域名作为 auth key，这样最稳妥
             echo \"{\\\"auths\\\":{\\\"\$SAFE_HOST\\\":{\\\"username\\\":\\\"${{ gitea.actor }}\\\",\\\"password\\\":\\\"${{ secrets.GITHUB_TOKEN }}\\\"}}}\" > /kaniko/.docker/config.json
             
-            # 3. 执行构建
             /kaniko/executor \
               --context=. \
               --dockerfile=Dockerfile \
