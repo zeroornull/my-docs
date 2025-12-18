@@ -41,7 +41,7 @@ jobs:
           HOST="${{ steps.prep.outputs.registry_host }}"
           
           # 生成 config.json
-          echo "{\"auths\":{\"$HOST\":{\"username\":\"${{ gitea.actor }}\",\"password\":\"${{ secrets.GITHUB_TOKEN }}\"}}}" > $HOME/.docker/config.json
+          echo "{\"auths\":{\"$HOST\":{\"username\":\"${{ gitea.actor }}\",\"password\":\"${{ secrets.PACKAGES_TOKEN }}\"}}}" > $HOME/.docker/config.json
 
       # 3. Kaniko 构建
       # 注意 destination 这里使用了处理过的 registry_host (不带 http)
