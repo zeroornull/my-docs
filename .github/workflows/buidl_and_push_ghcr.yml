@@ -8,46 +8,57 @@ on:
 
 jobs:
   build:
+    # 对应 Helm values 中 runner.labels 配置的标签
     runs-on: ubuntu-latest
-    
-    # 声明 DinD 服务
-    services:
-      docker:
-        image: docker:dind
-        options: --privileged
-        ports:
-          - 2375:2375
 
+    # 指定执行环境容器
     container:
       image: catthehacker/ubuntu:act-latest
+      # 【关键配置】
+      # 显式指定连接到同 Pod 内的 DinD Sidecar
+      # 因为我们在 Helm 里配置了 DOCKER_TLS_CERTDIR=""，所以这里走非加密 TCP
       env:
-        # 【修改点 1】在 K8s Pod 中，sidecar 容器即 localhost
         DOCKER_HOST: tcp://localhost:2375
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # (可选) 调试步骤：确认 Docker 是否连接成功
+      # 如果这一步打印出 Server Version，说明 Helm 配置生效了
+      - name: Check Docker Info
+        run: |
+          echo "Connecting to Docker at $DOCKER_HOST..."
+          docker info
+
+      # 设置 Buildx
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
         with:
-          # 【修改点 2】显式指定 endpoint 为 localhost
+          # 必须显式指定 endpoint，否则 Buildx 可能会尝试启动新容器或找 Socket 文件
           driver-opts: image=moby/buildkit:master
           endpoint: tcp://localhost:2375
 
+      # 登录 Gitea 容器镜像仓库
       - name: Log in to Gitea Container Registry
         uses: docker/login-action@v3
         with:
+          # 如果 ${{ gitea.server_url }} 带了 http:// 前缀且构建失败，
+          # 请直接写死域名，例如: registry: git.your-domain.com
           registry: ${{ gitea.server_url }}
           username: ${{ gitea.actor }}
           password: ${{ secrets.GITEA_TOKEN }}
 
+      # 构建并推送
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
           file: Dockerfile
           push: true
+          # 生成镜像标签
+          # 注意：Docker tag 不支持带 "http://"，如果 ${{ gitea.server_url }} 包含协议头，
+          # 请手动替换为域名，例如: git.your-domain.com/${{ gitea.actor }}/my-docs:...
           tags: |
             ${{ gitea.server_url }}/${{ gitea.actor }}/my-docs:latest
             ${{ gitea.server_url }}/${{ gitea.actor }}/my-docs:${{ gitea.sha }}
