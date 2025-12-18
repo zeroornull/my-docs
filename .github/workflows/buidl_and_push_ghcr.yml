@@ -1,4 +1,4 @@
-name: Build with Kaniko (PAT Auth)
+name: Build with Kaniko (Debug & Base64)
 
 on:
   push:
@@ -19,19 +19,41 @@ jobs:
           args: >-
             -c
             "
-            echo '正在生成认证信息 (使用 PAT)...' &&
+            # === 1. 变量准备 ===
+            # 定义域名（硬编码，排除 DNS 干扰）
+            HOST='gitea-http.gitea.svc.cluster.local:3000'
+            # 获取用户名并强制转为小写 (Docker 严格要求小写)
+            RAW_USER='${{ gitea.actor }}'
+            LOWER_USER=$(echo \"$RAW_USER\" | tr '[:upper:]' '[:lower:]')
+            PASS='${{ secrets.PACKAGES_TOKEN }}'
             
-            # === 重点修改在这里 ===
-            # 将 secrets.GITHUB_TOKEN 换成了 secrets.PACKAGES_TOKEN
-            echo '{\"auths\":{\"gitea-http.gitea.svc.cluster.local:3000\":{\"username\":\"${{ gitea.actor }}\",\"password\":\"${{ secrets.PACKAGES_TOKEN }}\"}}}' > /kaniko/.docker/config.json &&
+            echo \"构建用户: $RAW_USER (转换为: $LOWER_USER)\"
+            echo \"目标仓库: $HOST\"
+
+            # === 2. 生成标准 Base64 Auth ===
+            # 这是 Docker config.json 最原始的格式，兼容性最强
+            # echo -n 非常重要，不能有多余换行符
+            AUTH_STR=$(echo -n \"${RAW_USER}:${PASS}\" | base64 | tr -d '\n')
             
-            echo '认证文件已生成，开始构建...' &&
+            # 写入 config.json
+            echo \"{\\\"auths\\\":{\\\"$HOST\\\":{\\\"auth\\\":\\\"$AUTH_STR\\\"}}}\" > /kaniko/.docker/config.json
             
+            echo '认证文件已生成。'
+
+            # === 3. 连接性预检 (Pre-flight Check) ===
+            echo '正在进行 API 权限预检...'
+            # 尝试模拟 Docker Login 的行为访问 v2 接口
+            # 如果这里返回 401，说明 Token 绝对有问题或者 Gitea 没开 Registry
+            wget -q --spider --header \"Authorization: Basic $AUTH_STR\" http://$HOST/v2/ || echo '⚠️ 警告: 根路径连接测试失败 (可能是正常的 404/401，继续尝试)'
+
+            # === 4. 执行 Kaniko ===
+            echo '启动 Kaniko...'
             /kaniko/executor \
               --context=. \
               --dockerfile=Dockerfile \
-              --destination=gitea-http.gitea.svc.cluster.local:3000/${{ gitea.actor }}/my-docs:latest \
-              --destination=gitea-http.gitea.svc.cluster.local:3000/${{ gitea.actor }}/my-docs:${{ github.sha }} \
+              # 注意：镜像名路径必须全小写
+              --destination=$HOST/$LOWER_USER/my-docs:latest \
+              --destination=$HOST/$LOWER_USER/my-docs:${{ github.sha }} \
               --insecure \
               --skip-tls-verify \
               --cache=true
