@@ -1,4 +1,4 @@
-name: Build with Kaniko (Fixed URL)
+name: Build with Kaniko (Hardcoded No Vars)
 
 on:
   push:
@@ -16,25 +16,25 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Build and Push (Hardcoded Host)
+      - name: Build and Push
         uses: docker://gcr.io/kaniko-project/executor:v1.23.2-debug
         with:
           entrypoint: /busybox/sh
+          # 注意：下面所有出现域名的地方都直接写死了，确保不会出错
           args: >-
             -c
             "
-            # 直接填入你的内部域名，避免任何 Shell 解析问题
-            SAFE_HOST='gitea-http.gitea.svc.cluster.local:3000'
+            echo '正在生成认证信息...' &&
             
-            echo \"Using Host: \$SAFE_HOST\"
+            echo '{\"auths\":{\"gitea-http.gitea.svc.cluster.local:3000\":{\"username\":\"${{ gitea.actor }}\",\"password\":\"${{ secrets.GITHUB_TOKEN }}\"}}}' > /kaniko/.docker/config.json &&
             
-            echo \"{\\\"auths\\\":{\\\"\$SAFE_HOST\\\":{\\\"username\\\":\\\"${{ gitea.actor }}\\\",\\\"password\\\":\\\"${{ secrets.GITHUB_TOKEN }}\\\"}}}\" > /kaniko/.docker/config.json
+            echo '认证文件已生成，开始构建...' &&
             
             /kaniko/executor \
               --context=. \
               --dockerfile=Dockerfile \
-              --destination=\$SAFE_HOST/${{ gitea.actor }}/my-docs:latest \
-              --destination=\$SAFE_HOST/${{ gitea.actor }}/my-docs:${{ github.sha }} \
+              --destination=gitea-http.gitea.svc.cluster.local:3000/${{ gitea.actor }}/my-docs:latest \
+              --destination=gitea-http.gitea.svc.cluster.local:3000/${{ gitea.actor }}/my-docs:${{ github.sha }} \
               --insecure \
               --skip-tls-verify \
               --cache=true
