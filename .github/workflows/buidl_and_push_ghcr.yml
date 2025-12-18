@@ -9,9 +9,7 @@ on:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
-    # 1. 【关键】删除 container 字段，直接使用 Runner 的宿主环境
-    # container:
-    #   image: catthehacker/ubuntu:act-latest
+    # 不要在 rootless 环境下使用 container: ...
 
     steps:
       - name: Checkout code
@@ -19,26 +17,25 @@ jobs:
         with:
           fetch-depth: 0
 
+      # 1. 提取变量步骤保持不变，这很有用
       - name: Get Meta
         id: meta
         run: |
+          # 提取 Gitea 地址并去除 http(s)://
           REGISTRY_HOST=$(echo "${{ gitea.server_url }}" | sed -E 's/^\s*.*:\/\///g')
+          # 仓库名转小写
           REPO_LOWER=$(echo "${{ gitea.repository }}" | tr '[:upper:]' '[:lower:]')
+          # 获取短 Commit SHA
+          SHA_SHORT=$(git rev-parse --short HEAD)
+
           echo "REGISTRY_HOST=$REGISTRY_HOST" >> $GITHUB_OUTPUT
           echo "IMAGE_NAME=$REPO_LOWER" >> $GITHUB_OUTPUT
-          echo "VERSION_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          echo "VERSION_SHA=$SHA_SHORT" >> $GITHUB_OUTPUT
+          
+          # 打印一下，方便调试
+          echo "Will build: $REGISTRY_HOST/$REPO_LOWER:$SHA_SHORT"
 
-      # 2. 【关键】Rootless 环境通常无法动态加载 QEMU，必须注释掉
-      # - name: Set up QEMU
-      #   uses: docker/setup-qemu-action@v3
-
-      # 3. 【关键】配置 Buildx 使用 docker 驱动
-      # 默认的 docker-container 驱动在 rootless 下可能有网络/权限问题
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-        with:
-          driver: docker
-
+      # 2. 登录步骤 (Login Action 通常没问题，它只写配置文件)
       - name: Log in to Gitea Registry
         uses: docker/login-action@v3
         with:
@@ -46,15 +43,25 @@ jobs:
           username: ${{ gitea.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Dockerfile
-          push: true
-          # 4. 【注意】如果去掉了 QEMU，这里通常只能保留当前 Runner 的架构（如 linux/amd64）
-          # 去掉 linux/arm64，除非你的 Runner 本身就是 ARM 的或者宿主机已开启 QEMU 支持
-          platforms: linux/amd64 
-          tags: |
-            ${{ steps.meta.outputs.REGISTRY_HOST }}/${{ steps.meta.outputs.IMAGE_NAME }}:latest
-            ${{ steps.meta.outputs.REGISTRY_HOST }}/${{ steps.meta.outputs.IMAGE_NAME }}:${{ steps.meta.outputs.VERSION_SHA }}
+      # 3. 【核心修改】使用原生 Shell 命令替代 setup-buildx 和 build-push-action
+      # 这样直接使用 runner 宿主机的 docker 客户端，绕过 JS 库的连接 bug
+      - name: Build and Push (Native)
+        env:
+          REGISTRY: ${{ steps.meta.outputs.REGISTRY_HOST }}
+          IMAGE: ${{ steps.meta.outputs.IMAGE_NAME }}
+          TAG_LATEST: latest
+          TAG_SHA: ${{ steps.meta.outputs.VERSION_SHA }}
+        run: |
+          FULL_IMAGE_NAME="$REGISTRY/$IMAGE"
+          
+          echo "Building $FULL_IMAGE_NAME..."
+          
+          # 直接使用 docker build
+          docker build . \
+            --file Dockerfile \
+            --tag "$FULL_IMAGE_NAME:$TAG_LATEST" \
+            --tag "$FULL_IMAGE_NAME:$TAG_SHA"
+          
+          echo "Pushing images..."
+          docker push "$FULL_IMAGE_NAME:$TAG_LATEST"
+          docker push "$FULL_IMAGE_NAME:$TAG_SHA"
