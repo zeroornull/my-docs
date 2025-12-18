@@ -15,8 +15,22 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      - name: Debug Docker socket
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Extract metadata
+        id: meta
         run: |
-          echo "Looking for Docker socket..."
-          find /var/run -name "docker.sock" 2>/dev/null || true
-          ls -la /var/run/user/ 2>/dev/null || true
+          echo "date=$(date +'%Y%m%d-%H%M%S')" >> $GITHUB_OUTPUT
+          echo "sha_short=$(echo ${GITHUB_SHA} | cut -c1-7)" >> $GITHUB_OUTPUT
+      
+      - name: Build Docker image
+        run: |
+          docker build \
+            -t myapp:${{ steps.meta.outputs.sha_short }} \
+            -t myapp:latest \
+            -f Dockerfile \
+            .
+      
+      - name: List images
+        run: docker images | grep myapp
