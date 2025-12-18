@@ -1,69 +1,54 @@
-name: Docker Image CI
+name: Gitea Docker Image CI
+run-name: Build and Push to Gitea Registry
 
 on:
-  workflow_dispatch:
-  push:
+  workflow_dispatch:  # 保留手动触发
+  push:               # push 事件触发
     branches:
-      - main
+      - main          # 当推送代码到 main 分支时触发
 
 jobs:
-  build-and-push:
+  build:
     runs-on: ubuntu-latest
-    # 【回归本源】保留这个官方标准容器环境
-    # 这个镜像里预装了 docker 和 buildah，一定要加上
-    container:
-      image: catthehacker/ubuntu:act-latest
-
+    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      # 1. 生成认证配置
+      # 这里的逻辑替代了 docker/login-action
+      # 我们将 Gitea 自动提供的 Token 写入 Kaniko 需要的 config.json 中
+      - name: Create Kaniko Credentials
+        run: |
+          mkdir -p $HOME/.docker
+          # 提取 Gitea 的域名 (去掉 http/https 前缀)
+          DOMAIN=$(echo "${{ gitea.server_url }}" | awk -F/ '{print $3}')
+          # 生成认证文件
+          echo "{\"auths\":{\"$DOMAIN\":{\"username\":\"${{ gitea.actor }}\",\"password\":\"${{ secrets.GITHUB_TOKEN }}\"}}}" > $HOME/.docker/config.json
+
+      # 2. 准备镜像名称变量 (处理大小写)
+      # 这一步是为了防止用户名或仓库名有大写字母导致构建失败
+      - name: Prepare Image Name
+        id: prep
+        run: |
+          # 将 gitea.repository (格式: owner/repo) 转换为全小写
+          IMAGE_NAME=$(echo "${{ gitea.repository }}" | tr '[:upper:]' '[:lower:]')
+          echo "image_name=$IMAGE_NAME" >> $GITHUB_OUTPUT
+
+      # 3. 使用 Kaniko 构建并推送
+      # 替代了 setup-buildx, build 和 push
+      - name: Build and Push with Kaniko
+        uses: docker://gcr.io/kaniko-project/executor:debug
+        env:
+          # 指定 Kaniko 使用我们在第一步生成的认证文件
+          DOCKER_CONFIG: /github/home/.docker
         with:
-          fetch-depth: 0
-
-      # 1. 准备变量 (和你之前的逻辑一致)
-      - name: Get Meta
-        id: meta
-        run: |
-          # 请确认这个域名是你可以访问的外部域名
-          REGISTRY_HOST="gitea.173114.xyz"
-          REPO_LOWER=$(echo "${{ gitea.repository }}" | tr '[:upper:]' '[:lower:]')
-          SHA_SHORT=$(git rev-parse --short HEAD)
-
-          echo "REGISTRY_HOST=$REGISTRY_HOST" >> $GITHUB_OUTPUT
-          echo "IMAGE_NAME=$REPO_LOWER" >> $GITHUB_OUTPUT
-          echo "VERSION_SHA=$SHA_SHORT" >> $GITHUB_OUTPUT
-
-      # 2. 登录 (使用 Buildah)
-      # 为什么不用 docker/login-action？因为在 dind-rootless 下，插件调用 docker socket 容易由于权限失败
-      # 而 Buildah 是该镜像的原生工具，无需 socket 即可登录，最稳定。
-      - name: Log in to Registry
-        run: |
-          # 必须使用你创建的 Personal Access Token (PAT)
-          # 确保 secrets.GITEA_PACKAGES_TOKEN 有 write:packages 权限
-          buildah login \
-            -u ${{ gitea.actor }} \
-            -p ${{ secrets.PACKAGES_TOKEN }} \
-            ${{ steps.meta.outputs.REGISTRY_HOST }}
-
-      # 3. 构建并推送 (使用 Buildah)
-      # 既然环境是 rootless，Buildah 是官方推荐的“无守护进程”构建工具
-      # 它完全兼容 Dockerfile，且不会报 "Cannot connect to Docker daemon"
-      - name: Build and Push
-        run: |
-          FULL_IMAGE="${{ steps.meta.outputs.REGISTRY_HOST }}/${{ steps.meta.outputs.IMAGE_NAME }}"
-          TAG_LATEST="latest"
-          TAG_SHA="${{ steps.meta.outputs.VERSION_SHA }}"
-          
-          echo "Building $FULL_IMAGE..."
-          
-          # bud = build-using-dockerfile
-          buildah bud \
-            --format docker \
-            -f Dockerfile \
-            -t "$FULL_IMAGE:$TAG_LATEST" \
-            -t "$FULL_IMAGE:$TAG_SHA" \
-            .
-          
-          echo "Pushing..."
-          buildah push "$FULL_IMAGE:$TAG_LATEST"
-          buildah push "$FULL_IMAGE:$TAG_SHA"
+          # 相当于 docker build . --file Dockerfile
+          # destination 对应 docker push
+          args: >-
+            --context .
+            --dockerfile ./Dockerfile
+            --destination ${{ gitea.server_url }}/${{ steps.prep.outputs.image_name }}:latest
+            --destination ${{ gitea.server_url }}/${{ steps.prep.outputs.image_name }}:${{ gitea.sha }}
+            --force
+            --cache=true
