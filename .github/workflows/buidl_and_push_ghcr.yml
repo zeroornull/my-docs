@@ -1,53 +1,40 @@
-name: Gitea Docker Image CI
-run-name: Build and Push to Gitea Registry
+name: Docker Image CI
 
 on:
-  workflow_dispatch:
   push:
     branches:
       - main
 
-# 关键修正 1：显式声明 Actions Token 的权限
-# 这会让 Gitea 自动生成的 GITHUB_TOKEN 拥有上传 Package 的能力
-permissions:
-  packages: write
-  contents: read
-
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
 
-      - name: Prepare Variables
-        id: prep
-        run: |
-          CLEAN_HOST=$(echo "${{ gitea.server_url }}" | sed 's~http[s]*://~~g')
-          LOWER_REPO=$(echo "${{ gitea.repository }}" | tr '[:upper:]' '[:lower:]')
-          echo "registry_host=$CLEAN_HOST" >> $GITHUB_OUTPUT
-          echo "image_repo=$LOWER_REPO" >> $GITHUB_OUTPUT
+    # 设置 Docker Buildx
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
 
-      - name: Create Kaniko Credentials
-        run: |
-          mkdir -p $HOME/.docker
-          HOST="${{ steps.prep.outputs.registry_host }}"
-          
-          # 关键修正 2：回归标准 GITHUB_TOKEN + gitea.actor
-          # 配合上面的 permissions 配置，这是最不会出错的组合
-          echo "{\"auths\":{\"$HOST\":{\"username\":\"${{ "gitea_admin" }}\",\"password\":\"${{ secrets.PACKAGES_TOKEN }}\"}}}" > $HOME/.docker/config.json
+    # 登录 Gitea 容器镜像库
+    - name: Log in to Gitea Container Registry
+      uses: docker/login-action@v3
+      with:
+        # 您的 Gitea 实例地址，请在 Gitea 仓库的 Secrets 中设置 GITEA_REGISTRY_URL
+        registry: ${{ secrets.GITEA_REGISTRY_URL }}
+        username: ${{ gitea.actor }}
+        # 请在 Gitea 仓库的 Secrets 中创建一个具有包读写权限的 GITEA_TOKEN
+        password: ${{ secrets.GITEA_TOKEN }}
 
-      - name: Build and Push with Kaniko
-        uses: docker://gcr.io/kaniko-project/executor:debug
-        env:
-          DOCKER_CONFIG: /github/home/.docker
-        with:
-          args: >-
-            --context .
-            --dockerfile ./Dockerfile
-            --destination ${{ steps.prep.outputs.registry_host }}/${{ steps.prep.outputs.image_repo }}:latest
-            --destination ${{ steps.prep.outputs.registry_host }}/${{ steps.prep.outputs.image_repo }}:${{ gitea.sha }}
-            --force
-            --cache=true
-            --insecure
-            --skip-tls-verify
+    # 构建并推送 Docker 镜像
+    - name: Build and push Docker image
+      run: |
+        # 镜像名格式为：<Gitea 实例地址>/<所有者>/<仓库名>
+        IMAGE_NAME="${{ secrets.GITEA_REGISTRY_URL }}/${{ gitea.repository_owner }}/my-docs"
+        echo "Pushing to: $IMAGE_NAME"
+        docker build . --file Dockerfile \
+          --tag "$IMAGE_NAME:latest" \
+          --tag "$IMAGE_NAME:${{ gitea.sha }}"
+        docker push "$IMAGE_NAME:latest"
+        docker push "$IMAGE_NAME:${{ gitea.sha }}"
