@@ -8,29 +8,56 @@ on:
 
 jobs:
   build-and-push:
-    # 请将 'ubuntu-latest' 替换为您的 Gitea runner 标签, 例如: 'self-hosted, dind, rootless'
-    runs-on: ubuntu-latest 
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # 尝试自动检测并设置 Docker Socket 路径 (针对 Rootless 模式)
-      - name: Detect and Set Docker Socket
+      - name: Setup Docker Environment (Rootless/Dind)
+        id: docker-env
         run: |
-          echo "Checking for Docker socket..."
-          if [ -S /var/run/docker.sock ]; then
-            echo "Found /var/run/docker.sock"
-          elif [ -S /run/user/1000/docker.sock ]; then
-            echo "Found /run/user/1000/docker.sock"
-            echo "DOCKER_HOST=unix:///run/user/1000/docker.sock" >> $GITHUB_ENV
-            echo "Setting DOCKER_HOST to unix:///run/user/1000/docker.sock"
-          elif [ -S /run/docker.sock ]; then
-             echo "Found /run/docker.sock"
-             echo "DOCKER_HOST=unix:///run/docker.sock" >> $GITHUB_ENV
+          echo "🔍 Checking Docker environment..."
+          echo "User: $(whoami) (UID: $(id -u))"
+          
+          # 定义可能的 Socket 路径
+          SOCKET_PATHS=(
+            "/var/run/docker.sock"
+            "/run/docker.sock"
+            "/run/user/$(id -u)/docker.sock"
+            "/run/user/1000/docker.sock"
+          )
+          
+          FOUND_SOCKET=""
+          
+          for path in "${SOCKET_PATHS[@]}"; do
+            if [ -S "$path" ]; then
+              echo "✅ Found Docker socket at: $path"
+              FOUND_SOCKET="unix://$path"
+              break
+            fi
+          done
+          
+          if [ -z "$FOUND_SOCKET" ]; then
+            echo "⚠️ No Docker socket found in common locations."
+            echo "Listing /run/user if available:"
+            ls -R /run/user || echo "/run/user not accessible"
           else
-            echo "Docker socket not found in common locations."
-            echo "Listing /run/user/1000 if exists:"
-            ls -la /run/user/1000 || true
+            echo "DOCKER_HOST=$FOUND_SOCKET" >> $GITHUB_ENV
+            echo "Setting DOCKER_HOST to $FOUND_SOCKET"
+          fi
+
+      - name: Verify Docker Connection
+        run: |
+          echo "🐳 Verifying Docker connection..."
+          if docker info > /dev/null 2>&1; then
+            echo "✅ Docker is reachable!"
+            docker info
+          else
+            echo "❌ Cannot connect to Docker daemon."
+            echo "Current DOCKER_HOST: $DOCKER_HOST"
+            # 如果镜像里有 dind 但没启动，这里可能会失败。
+            # 但通常 Gitea Runner 的 dind 模式会自动挂载 socket。
+            exit 1
           fi
 
       - name: Set up Docker Buildx
@@ -39,16 +66,13 @@ jobs:
       - name: Log in to Gitea Container Registry
         uses: docker/login-action@v3
         with:
-          # 请将 'gitea.173114.xyz' 替换为您的 Gitea 实例 URL
-          registry: gitea.173114.xyz
+          registry: gitea.example.com
           username: ${{ gitea.actor }}
-          # Gitea 会为工作流提供一个临时令牌用于访问包
           password: ${{ secrets.GITEA_TOKEN }}
 
       - name: Build and push Docker image
         run: |
-          # Gitea 仓库中的镜像名称
-          IMAGE_NAME="gitea.173114.xyz/${{ gitea.owner }}/my-docs"
+          IMAGE_NAME="gitea.example.com/${{ gitea.owner }}/my-docs"
           echo "Pushing to: $IMAGE_NAME"
           docker build . --file Dockerfile \
             --tag "$IMAGE_NAME:latest" \
@@ -57,7 +81,6 @@ jobs:
           docker push "$IMAGE_NAME:${{ gitea.sha }}"
 
   deploy:
-    # 请将 'ubuntu-latest' 替换为您的 Gitea runner 标签
     runs-on: ubuntu-latest 
     needs: build-and-push
     steps:
@@ -69,21 +92,16 @@ jobs:
           mkdir -p $HOME/.kube
           echo "${{ secrets.KUBE_CONFIG }}" > $HOME/.kube/config
           chmod 600 $HOME/.kube/config
-        # KUBE_CONFIG应该是您的 kubeconfig 文件的 base64 编码内容
-        # 请在您的 Gitea 仓库设置中添加此 secret
         if: ${{ secrets.KUBE_CONFIG != '' }}
 
       - name: Set up Helm
         uses: azure/setup-helm@v3
         with:
-          # 如果需要，可以指定 Helm 版本, 例如: 'v3.8.0'
           version: 'latest'
 
       - name: Deploy with Helm
         run: |
-          # 假设您的 Helm chart 位于 'helm/my-docs' 目录中
-          # 请将 'my-docs-release' 替换为您期望的 Helm release 名称
-          IMAGE_NAME="gitea.173114.xyz/${{ gitea.owner }}/my-docs"
+          IMAGE_NAME="gitea.example.com/${{ gitea.owner }}/my-docs"
           helm upgrade --install my-docs-release ./helm/my-docs \
             --namespace my-docs-ns \
             --create-namespace \
