@@ -14,13 +14,32 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
+      # 尝试自动检测并设置 Docker Socket 路径 (针对 Rootless 模式)
+      - name: Detect and Set Docker Socket
+        run: |
+          echo "Checking for Docker socket..."
+          if [ -S /var/run/docker.sock ]; then
+            echo "Found /var/run/docker.sock"
+          elif [ -S /run/user/1000/docker.sock ]; then
+            echo "Found /run/user/1000/docker.sock"
+            echo "DOCKER_HOST=unix:///run/user/1000/docker.sock" >> $GITHUB_ENV
+            echo "Setting DOCKER_HOST to unix:///run/user/1000/docker.sock"
+          elif [ -S /run/docker.sock ]; then
+             echo "Found /run/docker.sock"
+             echo "DOCKER_HOST=unix:///run/docker.sock" >> $GITHUB_ENV
+          else
+            echo "Docker socket not found in common locations."
+            echo "Listing /run/user/1000 if exists:"
+            ls -la /run/user/1000 || true
+          fi
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to Gitea Container Registry
         uses: docker/login-action@v3
         with:
-          # 请将 'gitea.example.com' 替换为您的 Gitea 实例 URL
+          # 请将 'gitea.173114.xyz' 替换为您的 Gitea 实例 URL
           registry: gitea.173114.xyz
           username: ${{ gitea.actor }}
           # Gitea 会为工作流提供一个临时令牌用于访问包
@@ -64,7 +83,7 @@ jobs:
         run: |
           # 假设您的 Helm chart 位于 'helm/my-docs' 目录中
           # 请将 'my-docs-release' 替换为您期望的 Helm release 名称
-          IMAGE_NAME="gitea.example.com/${{ gitea.owner }}/my-docs"
+          IMAGE_NAME="gitea.173114.xyz/${{ gitea.owner }}/my-docs"
           helm upgrade --install my-docs-release ./helm/my-docs \
             --namespace my-docs-ns \
             --create-namespace \
