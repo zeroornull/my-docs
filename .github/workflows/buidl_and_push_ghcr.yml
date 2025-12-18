@@ -7,6 +7,12 @@ on:
     branches:
       - main
 
+# 关键修正 1：显式声明 Actions Token 的权限
+# 这会让 Gitea 自动生成的 GITHUB_TOKEN 拥有上传 Package 的能力
+permissions:
+  packages: write
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -14,37 +20,23 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 1. 关键修复：清洗变量
-      # 这一步同时处理：
-      # (1) 去掉 server_url 的 http:// 前缀
-      # (2) 把仓库名转为全小写 (docker 不支持大写)
       - name: Prepare Variables
         id: prep
         run: |
-          # 移除 http:// 和 https://
           CLEAN_HOST=$(echo "${{ gitea.server_url }}" | sed 's~http[s]*://~~g')
-          
-          # 转换为全小写
           LOWER_REPO=$(echo "${{ gitea.repository }}" | tr '[:upper:]' '[:lower:]')
-          
-          echo "Full Docker Host: $CLEAN_HOST"
-          echo "Lower Repo Name: $LOWER_REPO"
-          
-          # 输出给后续步骤使用
           echo "registry_host=$CLEAN_HOST" >> $GITHUB_OUTPUT
           echo "image_repo=$LOWER_REPO" >> $GITHUB_OUTPUT
 
-      # 2. 生成认证配置
       - name: Create Kaniko Credentials
         run: |
           mkdir -p $HOME/.docker
           HOST="${{ steps.prep.outputs.registry_host }}"
           
-          # 生成 config.json
-          echo "{\"auths\":{\"$HOST\":{\"username\":\"${{ gitea.actor }}\",\"password\":\"${{ secrets.PACKAGES_TOKEN }}\"}}}" > $HOME/.docker/config.json
+          # 关键修正 2：回归标准 GITHUB_TOKEN + gitea.actor
+          # 配合上面的 permissions 配置，这是最不会出错的组合
+          echo "{\"auths\":{\"$HOST\":{\"username\":\"${{ gitea.actor }}\",\"password\":\"${{ secrets.GITHUB_TOKEN }}\"}}}" > $HOME/.docker/config.json
 
-      # 3. Kaniko 构建
-      # 注意 destination 这里使用了处理过的 registry_host (不带 http)
       - name: Build and Push with Kaniko
         uses: docker://gcr.io/kaniko-project/executor:debug
         env:
