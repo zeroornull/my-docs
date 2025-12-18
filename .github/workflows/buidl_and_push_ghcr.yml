@@ -9,7 +9,9 @@ on:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
-    # 不要在 rootless 环境下使用 container: ...
+    # 【关键 1】显式指定使用包含 Buildah 的标准镜像
+    container:
+      image: catthehacker/ubuntu:act-latest
 
     steps:
       - name: Checkout code
@@ -17,13 +19,11 @@ jobs:
         with:
           fetch-depth: 0
 
-      # 1. 提取变量步骤保持不变，这很有用
       - name: Get Meta
         id: meta
         run: |
-          # 【修改点】不要自动抓取，直接写死你的外部 HTTPS 域名 (不带 https://)
-          # 例如: git.example.com
-          REGISTRY_HOST="gitea.173114.xyz" 
+          # 你的 Gitea 外部域名
+          REGISTRY_HOST="gitea.173114.xyz"
           
           REPO_LOWER=$(echo "${{ gitea.repository }}" | tr '[:upper:]' '[:lower:]')
           SHA_SHORT=$(git rev-parse --short HEAD)
@@ -31,21 +31,19 @@ jobs:
           echo "REGISTRY_HOST=$REGISTRY_HOST" >> $GITHUB_OUTPUT
           echo "IMAGE_NAME=$REPO_LOWER" >> $GITHUB_OUTPUT
           echo "VERSION_SHA=$SHA_SHORT" >> $GITHUB_OUTPUT
-          
-          # 打印一下，方便调试
-          echo "Will build: $REGISTRY_HOST/$REPO_LOWER:$SHA_SHORT"
 
-      # 2. 登录步骤 (Login Action 通常没问题，它只写配置文件)
-      - name: Log in to Gitea Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ steps.meta.outputs.REGISTRY_HOST }}
-          username: ${{ gitea.actor }}
-          password: ${{ secrets.PACKAGES_TOKEN }}
+      # 【关键 2】使用 buildah login
+      # 注意：这里必须使用你在上一步生成的 PAT (Secret: GITEA_PACKAGES_TOKEN)
+      - name: Log in to Gitea Registry (Buildah)
+        run: |
+          echo "Logging in to ${{ steps.meta.outputs.REGISTRY_HOST }}..."
+          buildah login \
+            -u ${{ gitea.actor }} \
+            -p ${{ secrets.PACKAGES_TOKEN }} \
+            ${{ steps.meta.outputs.REGISTRY_HOST }}
 
-      # 3. 【核心修改】使用原生 Shell 命令替代 setup-buildx 和 build-push-action
-      # 这样直接使用 runner 宿主机的 docker 客户端，绕过 JS 库的连接 bug
-      - name: Build and Push (Native)
+      # 【关键 3】使用 buildah build 和 push (无需 Docker Daemon)
+      - name: Build and Push with Buildah
         env:
           REGISTRY: ${{ steps.meta.outputs.REGISTRY_HOST }}
           IMAGE: ${{ steps.meta.outputs.IMAGE_NAME }}
@@ -56,12 +54,16 @@ jobs:
           
           echo "Building $FULL_IMAGE_NAME..."
           
-          # 直接使用 docker build
-          docker build . \
-            --file Dockerfile \
-            --tag "$FULL_IMAGE_NAME:$TAG_LATEST" \
-            --tag "$FULL_IMAGE_NAME:$TAG_SHA"
+          # buildah bud = build-using-dockerfile
+          # --layers 开启缓存层加速
+          buildah bud \
+            --layers \
+            --format docker \
+            -f Dockerfile \
+            -t "$FULL_IMAGE_NAME:$TAG_LATEST" \
+            -t "$FULL_IMAGE_NAME:$TAG_SHA" \
+            .
           
           echo "Pushing images..."
-          docker push "$FULL_IMAGE_NAME:$TAG_LATEST"
-          docker push "$FULL_IMAGE_NAME:$TAG_SHA"
+          buildah push "$FULL_IMAGE_NAME:$TAG_LATEST"
+          buildah push "$FULL_IMAGE_NAME:$TAG_SHA"
