@@ -26,7 +26,7 @@ jobs:
             "
             echo '正在生成认证信息...' &&
             
-            echo '{\"auths\":{\"gitea-http.gitea.svc.cluster.local:3000\":{\"username\":\"${{ gitea.actor }}\",\"password\":\"${{ secrets.GITHUB_TOKEN }}\"}}}' > /kaniko/.docker/config.json &&
+            echo '{\"auths\":{\"gitea-http.gitea.svc.cluster.local:3000\":{\"username\":\"${{ gitea.actor }}\",\"password\":\"${{ secrets.PACKAGES_TOKEN }}\"}}}' > /kaniko/.docker/config.json &&
             
             echo '认证文件已生成，开始构建...' &&
             
