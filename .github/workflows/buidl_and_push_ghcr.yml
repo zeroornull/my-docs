@@ -1,33 +1,48 @@
-name: Gitea Actions DinD Test
+name: Build with Kaniko
 
-on: [push]
+on:
+  workflow_dispatch:   # 手动触发
+  push:
+    branches:
+      - main           # main 分支触发
+
+permissions:
+  packages: write      # 必须：允许写入 Gitea 软件包/容器仓库
+  contents: read
 
 jobs:
-  check-docker:
-    # 确保这里的 labels 与你 runner 注册时的 labels 一致
-    # 默认通常是 ubuntu-latest, self-hosted 或者在 config 中定义的 labels
-    runs-on: ubuntu-latest 
-
+  build:
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: 1. 检查环境变量
-        run: |
-          echo "Checking DOCKER_HOST..."
-          echo "DOCKER_HOST is: $DOCKER_HOST"
-
-      - name: 2. 检查 Docker Daemon 连接
-        run: |
-          docker info
-
-      - name: 3. 测试运行容器 (Hello World)
-        run: |
-          docker run --rm alpine echo "Hello from DinD! Docker is working correctly."
-
-      - name: 4. 测试构建镜像 (Optional)
-        run: |
-          echo "FROM alpine" > Dockerfile
-          echo "RUN echo 'Built inside Gitea Actions'" >> Dockerfile
-          docker build -t test-image:latest .
-          docker images | grep test-image
+      # 核心替换：使用 Kaniko 构建并推送
+      - name: Build and Publish to Gitea Registry
+        uses: aevea/action-kaniko@v1
+        with:
+          # 1. 自动获取 Gitea 服务器的域名作为 Registry 地址
+          # 如果你的 Gitea 有单独的 Registry 域名，请手动修改这里，例如 'registry.example.com'
+          registry: ${{ gitea.server_url }} 
+          
+          # 2. 认证信息：直接使用 Gitea Actions 自动生成的 Token
+          username: ${{ gitea.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+          
+          # 3. 镜像名称：注意 Gitea 镜像必须包含 '用户名/镜像名'
+          # 这里会自动拼接为: zeroornull/my-docs
+          image: ${{ gitea.actor }}/my-docs
+          
+          # 4. 标签设置：同时打 latest 和 commit sha 标签
+          tag: latest,${{ github.sha }}
+          
+          # 5. 缓存设置 (可选)：加快构建速度
+          cache: true
+          cache_registry: ${{ gitea.actor }}/my-docs-cache
+          
+          # 6. 重要：如果是内网自签名证书或 HTTP，必须开启此选项，否则会报错
+          # 如果你的 Gitea 配置了正规 HTTPS 证书，可以将此行删除或设为 false
+          insecure: true 
+          
+          # 7. 指定 Dockerfile 位置 (如果不是根目录的标准 Dockerfile)
+          file: Dockerfile
