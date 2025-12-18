@@ -1,4 +1,22 @@
-- name: Build and Push (Hardcoded Host)
+name: Build with Kaniko (Fixed URL)
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  packages: write
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build and Push (Hardcoded Host)
         uses: docker://gcr.io/kaniko-project/executor:v1.23.2-debug
         with:
           entrypoint: /busybox/sh
