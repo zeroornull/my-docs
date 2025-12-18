@@ -1,13 +1,12 @@
-name: Build with Kaniko
+name: Build with Kaniko (Fixed)
 
 on:
-  workflow_dispatch:   # 手动触发
   push:
-    branches:
-      - main           # main 分支触发
+    branches: [ main ]
+  workflow_dispatch:
 
 permissions:
-  packages: write      # 必须：允许写入 Gitea 软件包/容器仓库
+  packages: write
   contents: read
 
 jobs:
@@ -17,32 +16,26 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 核心替换：使用 Kaniko 构建并推送
-      - name: Build and Publish to Gitea Registry
-        uses: aevea/action-kaniko@v1
+      - name: Build and Push
+        # 使用这个特殊的 Action，它只是一个本地 Shell 脚本包装，不需要从 GitHub 下载复杂的依赖
+        # 或者我们直接用 docker:// 语法（如下所示），这是最原生的
+        uses: docker://gcr.io/kaniko-project/executor:v1.23.2-debug
+        env:
+          # 这里的技巧是：Kaniko 读取环境变量中的认证信息
+          # 我们不创建文件，直接把 Gitea Token 传进去（Kaniko 不直接支持 ENV 认证，所以要用 shell 这种 trick）
+          GIT_USERNAME: ${{ gitea.actor }}
+          GIT_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         with:
-          # 1. 自动获取 Gitea 服务器的域名作为 Registry 地址
-          # 如果你的 Gitea 有单独的 Registry 域名，请手动修改这里，例如 'registry.example.com'
-          registry: ${{ gitea.server_url }} 
-          
-          # 2. 认证信息：直接使用 Gitea Actions 自动生成的 Token
-          username: ${{ gitea.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-          
-          # 3. 镜像名称：注意 Gitea 镜像必须包含 '用户名/镜像名'
-          # 这里会自动拼接为: zeroornull/my-docs
-          image: ${{ gitea.actor }}/my-docs
-          
-          # 4. 标签设置：同时打 latest 和 commit sha 标签
-          tag: latest,${{ github.sha }}
-          
-          # 5. 缓存设置 (可选)：加快构建速度
-          cache: true
-          cache_registry: ${{ gitea.actor }}/my-docs-cache
-          
-          # 6. 重要：如果是内网自签名证书或 HTTP，必须开启此选项，否则会报错
-          # 如果你的 Gitea 配置了正规 HTTPS 证书，可以将此行删除或设为 false
-          insecure: true 
-          
-          # 7. 指定 Dockerfile 位置 (如果不是根目录的标准 Dockerfile)
-          file: Dockerfile
+          entrypoint: /busybox/sh
+          args: >-
+            -c
+            "echo '{\"auths\":{\"${{ gitea.server_url }}\":{\"username\":\"${{ gitea.actor }}\",\"password\":\"${{ secrets.GITHUB_TOKEN }}\"}}}' > /kaniko/.docker/config.json
+            &&
+            /kaniko/executor
+            --context=.
+            --dockerfile=Dockerfile
+            --destination=${{ gitea.server_url }}/${{ gitea.actor }}/my-docs:latest
+            --destination=${{ gitea.server_url }}/${{ gitea.actor }}/my-docs:${{ github.sha }}
+            --insecure
+            --skip-tls-verify
+            --cache=true"
