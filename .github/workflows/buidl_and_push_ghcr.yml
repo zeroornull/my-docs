@@ -17,7 +17,7 @@ jobs:
         with:
           fetch-depth: 0
 
-- name: Get Meta
+      - name: Get Meta
         id: meta
         run: |
           # 【修改点】不要自动抓取，直接写死你的外部 HTTPS 域名 (不带 https://)
