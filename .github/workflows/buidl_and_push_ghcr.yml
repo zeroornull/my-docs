@@ -23,7 +23,7 @@ jobs:
         run: |
           # 【修改点】不要自动抓取，直接写死你的外部 HTTPS 域名 (不带 https://)
           # 例如: git.example.com
-          REGISTRY_HOST="你的外部域名.com" 
+          REGISTRY_HOST="gitea.173114.xyz" 
           
           REPO_LOWER=$(echo "${{ gitea.repository }}" | tr '[:upper:]' '[:lower:]')
           SHA_SHORT=$(git rev-parse --short HEAD)
