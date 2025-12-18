@@ -1,17 +1,17 @@
 name: Docker Image CI
 
 on:
-  workflow_dispatch:  # 保留手动触发
+  workflow_dispatch:
   push:
     branches:
-      - main          # 推送代码到 main 分支时触发
+      - main
 
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
-    # 模仿参考配置：指定运行容器，确保包含完整的工具链
-    container:
-      image: catthehacker/ubuntu:act-latest
+    # 1. 【关键】删除 container 字段，直接使用 Runner 的宿主环境
+    # container:
+    #   image: catthehacker/ubuntu:act-latest
 
     steps:
       - name: Checkout code
@@ -19,46 +19,42 @@ jobs:
         with:
           fetch-depth: 0
 
-      # 模仿参考配置：提取元数据 (Registry地址, 镜像名, Version)
-      # Gitea 的 server_url 包含协议头(https://)，docker tag 不需要，所以这里处理一下
       - name: Get Meta
         id: meta
         run: |
-          # 提取域名 (去除 http:// 或 https://)
           REGISTRY_HOST=$(echo "${{ gitea.server_url }}" | sed -E 's/^\s*.*:\/\///g')
-          # 转换为小写，确保镜像名合法
           REPO_LOWER=$(echo "${{ gitea.repository }}" | tr '[:upper:]' '[:lower:]')
-          
           echo "REGISTRY_HOST=$REGISTRY_HOST" >> $GITHUB_OUTPUT
           echo "IMAGE_NAME=$REPO_LOWER" >> $GITHUB_OUTPUT
           echo "VERSION_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
-      # 设置 QEMU (支持多架构构建，如果不需要可以注释掉)
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+      # 2. 【关键】Rootless 环境通常无法动态加载 QEMU，必须注释掉
+      # - name: Set up QEMU
+      #   uses: docker/setup-qemu-action@v3
 
-      # 设置 Docker Buildx (构建的核心)
+      # 3. 【关键】配置 Buildx 使用 docker 驱动
+      # 默认的 docker-container 驱动在 rootless 下可能有网络/权限问题
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-        # 针对 dind-rootless 环境，有时需要显式指定驱动，通常默认即可
-        # 如果遇到 socket 权限问题，可能需要配置 driver-opts
+        with:
+          driver: docker
 
-      # 登录 Gitea 内置的容器镜像仓库
       - name: Log in to Gitea Registry
         uses: docker/login-action@v3
         with:
           registry: ${{ steps.meta.outputs.REGISTRY_HOST }}
           username: ${{ gitea.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }} # Gitea 会自动生成此 Token，拥有推送到包管理器的权限
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      # 构建并推送
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./Dockerfile
           push: true
-          platforms: linux/amd64,linux/arm64 # 根据需要保留或修改架构
+          # 4. 【注意】如果去掉了 QEMU，这里通常只能保留当前 Runner 的架构（如 linux/amd64）
+          # 去掉 linux/arm64，除非你的 Runner 本身就是 ARM 的或者宿主机已开启 QEMU 支持
+          platforms: linux/amd64 
           tags: |
             ${{ steps.meta.outputs.REGISTRY_HOST }}/${{ steps.meta.outputs.IMAGE_NAME }}:latest
             ${{ steps.meta.outputs.REGISTRY_HOST }}/${{ steps.meta.outputs.IMAGE_NAME }}:${{ steps.meta.outputs.VERSION_SHA }}
