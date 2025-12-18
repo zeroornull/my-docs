@@ -9,7 +9,8 @@ on:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
-    # 【关键 1】显式指定使用包含 Buildah 的标准镜像
+    # 【回归本源】保留这个官方标准容器环境
+    # 这个镜像里预装了 docker 和 buildah，一定要加上
     container:
       image: catthehacker/ubuntu:act-latest
 
@@ -19,12 +20,12 @@ jobs:
         with:
           fetch-depth: 0
 
+      # 1. 准备变量 (和你之前的逻辑一致)
       - name: Get Meta
         id: meta
         run: |
-          # 你的 Gitea 外部域名
+          # 请确认这个域名是你可以访问的外部域名
           REGISTRY_HOST="gitea.173114.xyz"
-          
           REPO_LOWER=$(echo "${{ gitea.repository }}" | tr '[:upper:]' '[:lower:]')
           SHA_SHORT=$(git rev-parse --short HEAD)
 
@@ -32,38 +33,37 @@ jobs:
           echo "IMAGE_NAME=$REPO_LOWER" >> $GITHUB_OUTPUT
           echo "VERSION_SHA=$SHA_SHORT" >> $GITHUB_OUTPUT
 
-      # 【关键 2】使用 buildah login
-      # 注意：这里必须使用你在上一步生成的 PAT (Secret: GITEA_PACKAGES_TOKEN)
-      - name: Log in to Gitea Registry (Buildah)
+      # 2. 登录 (使用 Buildah)
+      # 为什么不用 docker/login-action？因为在 dind-rootless 下，插件调用 docker socket 容易由于权限失败
+      # 而 Buildah 是该镜像的原生工具，无需 socket 即可登录，最稳定。
+      - name: Log in to Registry
         run: |
-          echo "Logging in to ${{ steps.meta.outputs.REGISTRY_HOST }}..."
+          # 必须使用你创建的 Personal Access Token (PAT)
+          # 确保 secrets.GITEA_PACKAGES_TOKEN 有 write:packages 权限
           buildah login \
             -u ${{ gitea.actor }} \
             -p ${{ secrets.PACKAGES_TOKEN }} \
             ${{ steps.meta.outputs.REGISTRY_HOST }}
 
-      # 【关键 3】使用 buildah build 和 push (无需 Docker Daemon)
-      - name: Build and Push with Buildah
-        env:
-          REGISTRY: ${{ steps.meta.outputs.REGISTRY_HOST }}
-          IMAGE: ${{ steps.meta.outputs.IMAGE_NAME }}
-          TAG_LATEST: latest
-          TAG_SHA: ${{ steps.meta.outputs.VERSION_SHA }}
+      # 3. 构建并推送 (使用 Buildah)
+      # 既然环境是 rootless，Buildah 是官方推荐的“无守护进程”构建工具
+      # 它完全兼容 Dockerfile，且不会报 "Cannot connect to Docker daemon"
+      - name: Build and Push
         run: |
-          FULL_IMAGE_NAME="$REGISTRY/$IMAGE"
+          FULL_IMAGE="${{ steps.meta.outputs.REGISTRY_HOST }}/${{ steps.meta.outputs.IMAGE_NAME }}"
+          TAG_LATEST="latest"
+          TAG_SHA="${{ steps.meta.outputs.VERSION_SHA }}"
           
-          echo "Building $FULL_IMAGE_NAME..."
+          echo "Building $FULL_IMAGE..."
           
-          # buildah bud = build-using-dockerfile
-          # --layers 开启缓存层加速
+          # bud = build-using-dockerfile
           buildah bud \
-            --layers \
             --format docker \
             -f Dockerfile \
-            -t "$FULL_IMAGE_NAME:$TAG_LATEST" \
-            -t "$FULL_IMAGE_NAME:$TAG_SHA" \
+            -t "$FULL_IMAGE:$TAG_LATEST" \
+            -t "$FULL_IMAGE:$TAG_SHA" \
             .
           
-          echo "Pushing images..."
-          buildah push "$FULL_IMAGE_NAME:$TAG_LATEST"
-          buildah push "$FULL_IMAGE_NAME:$TAG_SHA"
+          echo "Pushing..."
+          buildah push "$FULL_IMAGE:$TAG_LATEST"
+          buildah push "$FULL_IMAGE:$TAG_SHA"
