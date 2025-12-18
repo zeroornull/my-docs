@@ -41,7 +41,7 @@ jobs:
         with:
           registry: ${{ steps.meta.outputs.REGISTRY_HOST }}
           username: ${{ gitea.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ secrets.PACKAGES_TOKEN }}
 
       # 3. 【核心修改】使用原生 Shell 命令替代 setup-buildx 和 build-push-action
       # 这样直接使用 runner 宿主机的 docker 客户端，绕过 JS 库的连接 bug
