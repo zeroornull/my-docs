@@ -17,54 +17,47 @@ jobs:
         with:
           fetch-depth: 0
 
-      # 1. 提取变量步骤保持不变，这很有用
-      - name: Get Meta
+- name: Get Meta
         id: meta
         run: |
-          # 提取 Gitea 地址并去除 http(s)://
-          REGISTRY_HOST=$(echo "${{ gitea.server_url }}" | sed -E 's/^\s*.*:\/\///g')
-          # 仓库名转小写
+          # 【修改点】不要自动抓取，直接写死你的外部 HTTPS 域名 (不带 https://)
+          # 例如: git.example.com
+          REGISTRY_HOST="gitea.173114.xyz" 
+          
           REPO_LOWER=$(echo "${{ gitea.repository }}" | tr '[:upper:]' '[:lower:]')
-          # 获取短 Commit SHA
           SHA_SHORT=$(git rev-parse --short HEAD)
 
           echo "REGISTRY_HOST=$REGISTRY_HOST" >> $GITHUB_OUTPUT
           echo "IMAGE_NAME=$REPO_LOWER" >> $GITHUB_OUTPUT
           echo "VERSION_SHA=$SHA_SHORT" >> $GITHUB_OUTPUT
-          
-          # 打印一下，方便调试
-          echo "Will build: $REGISTRY_HOST/$REPO_LOWER:$SHA_SHORT"
 
-      # 替换掉原有的 docker login 步骤
-      - name: Log in to Gitea Registry (Buildah)
-        run: |
-          # --tls-verify=false 允许 HTTP 登录
-          buildah login --tls-verify=false \
-            -u ${{ gitea.actor }} \
-            -p ${{ secrets.GITHUB_TOKEN }} \
-            ${{ steps.meta.outputs.REGISTRY_HOST }}
+        # 2. 登录步骤 (Login Action 通常没问题，它只写配置文件)
+        - name: Log in to Gitea Registry
+          uses: docker/login-action@v3
+          with:
+            registry: ${{ steps.meta.outputs.REGISTRY_HOST }}
+            username: ${{ gitea.actor }}
+            password: ${{ secrets.GITHUB_TOKEN }}
 
-      # 替换掉原有的 docker build/push 步骤
-      - name: Build and Push with Buildah
-        env:
-          REGISTRY: ${{ steps.meta.outputs.REGISTRY_HOST }}
-          IMAGE: ${{ steps.meta.outputs.IMAGE_NAME }}
-          TAG_LATEST: latest
-          TAG_SHA: ${{ steps.meta.outputs.VERSION_SHA }}
-        run: |
-          FULL_IMAGE_NAME="$REGISTRY/$IMAGE"
-          
-          echo "Building $FULL_IMAGE_NAME..."
-          
-          # 使用 buildah bud (build-using-dockerfile)
-          buildah bud \
-            --format docker \
-            -f Dockerfile \
-            -t "$FULL_IMAGE_NAME:$TAG_LATEST" \
-            -t "$FULL_IMAGE_NAME:$TAG_SHA" \
-            .
-          
-          echo "Pushing images..."
-          # 关键参数：--tls-verify=false 允许推送到 HTTP 仓库
-          buildah push --tls-verify=false "$FULL_IMAGE_NAME:$TAG_LATEST"
-          buildah push --tls-verify=false "$FULL_IMAGE_NAME:$TAG_SHA"
+        # 3. 【核心修改】使用原生 Shell 命令替代 setup-buildx 和 build-push-action
+        # 这样直接使用 runner 宿主机的 docker 客户端，绕过 JS 库的连接 bug
+        - name: Build and Push (Native)
+          env:
+            REGISTRY: ${{ steps.meta.outputs.REGISTRY_HOST }}
+            IMAGE: ${{ steps.meta.outputs.IMAGE_NAME }}
+            TAG_LATEST: latest
+            TAG_SHA: ${{ steps.meta.outputs.VERSION_SHA }}
+          run: |
+            FULL_IMAGE_NAME="$REGISTRY/$IMAGE"
+            
+            echo "Building $FULL_IMAGE_NAME..."
+            
+            # 直接使用 docker build
+            docker build . \
+              --file Dockerfile \
+              --tag "$FULL_IMAGE_NAME:$TAG_LATEST" \
+              --tag "$FULL_IMAGE_NAME:$TAG_SHA"
+            
+            echo "Pushing images..."
+            docker push "$FULL_IMAGE_NAME:$TAG_LATEST"
+            docker push "$FULL_IMAGE_NAME:$TAG_SHA"
