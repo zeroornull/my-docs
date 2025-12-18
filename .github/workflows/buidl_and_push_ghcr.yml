@@ -1,64 +1,64 @@
 name: Docker Image CI
 
 on:
-  workflow_dispatch:
+  workflow_dispatch:  # 保留手动触发
   push:
     branches:
-      - main
+      - main          # 推送代码到 main 分支时触发
 
 jobs:
-  build:
-    # 对应 Helm values 中 runner.labels 配置的标签
+  build-and-push:
     runs-on: ubuntu-latest
-
-    # 指定执行环境容器
+    # 模仿参考配置：指定运行容器，确保包含完整的工具链
     container:
       image: catthehacker/ubuntu:act-latest
-      # 【关键配置】
-      # 显式指定连接到同 Pod 内的 DinD Sidecar
-      # 因为我们在 Helm 里配置了 DOCKER_TLS_CERTDIR=""，所以这里走非加密 TCP
-      env:
-        DOCKER_HOST: tcp://localhost:2375
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      # (可选) 调试步骤：确认 Docker 是否连接成功
-      # 如果这一步打印出 Server Version，说明 Helm 配置生效了
-      - name: Check Docker Info
+      # 模仿参考配置：提取元数据 (Registry地址, 镜像名, Version)
+      # Gitea 的 server_url 包含协议头(https://)，docker tag 不需要，所以这里处理一下
+      - name: Get Meta
+        id: meta
         run: |
-          echo "Connecting to Docker at $DOCKER_HOST..."
-          docker info
+          # 提取域名 (去除 http:// 或 https://)
+          REGISTRY_HOST=$(echo "${{ gitea.server_url }}" | sed -E 's/^\s*.*:\/\///g')
+          # 转换为小写，确保镜像名合法
+          REPO_LOWER=$(echo "${{ gitea.repository }}" | tr '[:upper:]' '[:lower:]')
+          
+          echo "REGISTRY_HOST=$REGISTRY_HOST" >> $GITHUB_OUTPUT
+          echo "IMAGE_NAME=$REPO_LOWER" >> $GITHUB_OUTPUT
+          echo "VERSION_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
-      # 设置 Buildx
+      # 设置 QEMU (支持多架构构建，如果不需要可以注释掉)
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      # 设置 Docker Buildx (构建的核心)
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-        with:
-          # 必须显式指定 endpoint，否则 Buildx 可能会尝试启动新容器或找 Socket 文件
-          driver-opts: image=moby/buildkit:master
-          endpoint: tcp://localhost:2375
+        # 针对 dind-rootless 环境，有时需要显式指定驱动，通常默认即可
+        # 如果遇到 socket 权限问题，可能需要配置 driver-opts
 
-      # 登录 Gitea 容器镜像仓库
-      - name: Log in to Gitea Container Registry
+      # 登录 Gitea 内置的容器镜像仓库
+      - name: Log in to Gitea Registry
         uses: docker/login-action@v3
         with:
-          # 如果 ${{ gitea.server_url }} 带了 http:// 前缀且构建失败，
-          # 请直接写死域名，例如: registry: git.your-domain.com
-          registry: ${{ gitea.server_url }}
+          registry: ${{ steps.meta.outputs.REGISTRY_HOST }}
           username: ${{ gitea.actor }}
-          password: ${{ secrets.GITEA_TOKEN }}
+          password: ${{ secrets.GITHUB_TOKEN }} # Gitea 会自动生成此 Token，拥有推送到包管理器的权限
 
       # 构建并推送
-      - name: Build and push Docker image
+      - name: Build and push
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: Dockerfile
+          file: ./Dockerfile
           push: true
-          # 生成镜像标签
-          # 注意：Docker tag 不支持带 "http://"，如果 ${{ gitea.server_url }} 包含协议头，
-          # 请手动替换为域名，例如: git.your-domain.com/${{ gitea.actor }}/my-docs:...
+          platforms: linux/amd64,linux/arm64 # 根据需要保留或修改架构
           tags: |
-            ${{ gitea.server_url }}/${{ gitea.actor }}/my-docs:latest
-            ${{ gitea.server_url }}/${{ gitea.actor }}/my-docs:${{ gitea.sha }}
+            ${{ steps.meta.outputs.REGISTRY_HOST }}/${{ steps.meta.outputs.IMAGE_NAME }}:latest
+            ${{ steps.meta.outputs.REGISTRY_HOST }}/${{ steps.meta.outputs.IMAGE_NAME }}:${{ steps.meta.outputs.VERSION_SHA }}
