@@ -2,53 +2,60 @@ name: Gitea Docker Image CI
 run-name: Build and Push to Gitea Registry
 
 on:
-  workflow_dispatch:  # 保留手动触发
-  push:               # push 事件触发
+  workflow_dispatch:
+  push:
     branches:
-      - main          # 当推送代码到 main 分支时触发
+      - main
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 1. 生成认证配置
-      # 这里的逻辑替代了 docker/login-action
-      # 我们将 Gitea 自动提供的 Token 写入 Kaniko 需要的 config.json 中
+      # 1. 关键修复：清洗变量
+      # 这一步同时处理：
+      # (1) 去掉 server_url 的 http:// 前缀
+      # (2) 把仓库名转为全小写 (docker 不支持大写)
+      - name: Prepare Variables
+        id: prep
+        run: |
+          # 移除 http:// 和 https://
+          CLEAN_HOST=$(echo "${{ gitea.server_url }}" | sed 's~http[s]*://~~g')
+          
+          # 转换为全小写
+          LOWER_REPO=$(echo "${{ gitea.repository }}" | tr '[:upper:]' '[:lower:]')
+          
+          echo "Full Docker Host: $CLEAN_HOST"
+          echo "Lower Repo Name: $LOWER_REPO"
+          
+          # 输出给后续步骤使用
+          echo "registry_host=$CLEAN_HOST" >> $GITHUB_OUTPUT
+          echo "image_repo=$LOWER_REPO" >> $GITHUB_OUTPUT
+
+      # 2. 生成认证配置
       - name: Create Kaniko Credentials
         run: |
           mkdir -p $HOME/.docker
-          # 提取 Gitea 的域名 (去掉 http/https 前缀)
-          DOMAIN=$(echo "${{ gitea.server_url }}" | awk -F/ '{print $3}')
-          # 生成认证文件
-          echo "{\"auths\":{\"$DOMAIN\":{\"username\":\"${{ gitea.actor }}\",\"password\":\"${{ secrets.GITHUB_TOKEN }}\"}}}" > $HOME/.docker/config.json
+          HOST="${{ steps.prep.outputs.registry_host }}"
+          
+          # 生成 config.json
+          echo "{\"auths\":{\"$HOST\":{\"username\":\"${{ gitea.actor }}\",\"password\":\"${{ secrets.GITHUB_TOKEN }}\"}}}" > $HOME/.docker/config.json
 
-      # 2. 准备镜像名称变量 (处理大小写)
-      # 这一步是为了防止用户名或仓库名有大写字母导致构建失败
-      - name: Prepare Image Name
-        id: prep
-        run: |
-          # 将 gitea.repository (格式: owner/repo) 转换为全小写
-          IMAGE_NAME=$(echo "${{ gitea.repository }}" | tr '[:upper:]' '[:lower:]')
-          echo "image_name=$IMAGE_NAME" >> $GITHUB_OUTPUT
-
-      # 3. 使用 Kaniko 构建并推送
-      # 替代了 setup-buildx, build 和 push
+      # 3. Kaniko 构建
+      # 注意 destination 这里使用了处理过的 registry_host (不带 http)
       - name: Build and Push with Kaniko
         uses: docker://gcr.io/kaniko-project/executor:debug
         env:
-          # 指定 Kaniko 使用我们在第一步生成的认证文件
           DOCKER_CONFIG: /github/home/.docker
         with:
-          # 相当于 docker build . --file Dockerfile
-          # destination 对应 docker push
           args: >-
             --context .
             --dockerfile ./Dockerfile
-            --destination ${{ gitea.server_url }}/${{ steps.prep.outputs.image_name }}:latest
-            --destination ${{ gitea.server_url }}/${{ steps.prep.outputs.image_name }}:${{ gitea.sha }}
+            --destination ${{ steps.prep.outputs.registry_host }}/${{ steps.prep.outputs.image_repo }}:latest
+            --destination ${{ steps.prep.outputs.registry_host }}/${{ steps.prep.outputs.image_repo }}:${{ gitea.sha }}
             --force
             --cache=true
+            --insecure
+            --skip-tls-verify
