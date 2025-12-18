@@ -1,56 +1,33 @@
-name: Build and Push Docs
-run-name: Build Docs - ${{ gitea.actor }}
+name: Gitea Actions DinD Test
 
-on:
-  push:
-    branches:
-      - main
-    tags:
-      - 'v*'
-  workflow_dispatch:
+on: [push]
 
 jobs:
-  build-push:
-    runs-on: ubuntu-latest
+  check-docker:
+    # 确保这里的 labels 与你 runner 注册时的 labels 一致
+    # 默认通常是 ubuntu-latest, self-hosted 或者在 config 中定义的 labels
+    runs-on: ubuntu-latest 
+
     steps:
-      # 1. 检出代码
-      # 注意：必须包含 nginx/nginx.conf 和 Dockerfile
-      - name: Checkout
-        uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      # 2. 登录镜像仓库
-      - name: Login to Registry
-        uses: docker/login-action@v2
-        with:
-          registry: ${{ secrets.DOCKER_REGISTRY }}
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
+      - name: 1. 检查环境变量
+        run: |
+          echo "Checking DOCKER_HOST..."
+          echo "DOCKER_HOST is: $DOCKER_HOST"
 
-      # 3. 启用 Buildx
-      # 这是必须的，因为 docker/build-push-action 依赖它
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+      - name: 2. 检查 Docker Daemon 连接
+        run: |
+          docker info
 
-      # 4. 生成 Metadata (自动生成 latest, v1.0.0 等标签)
-      - name: Docker Metadata
-        id: meta
-        uses: docker/metadata-action@v4
-        with:
-          images: ${{ secrets.DOCKER_REGISTRY }}/your-image-name
-          tags: |
-            type=ref,event=branch
-            type=semver,pattern={{version}}
-            type=sha,format=short
+      - name: 3. 测试运行容器 (Hello World)
+        run: |
+          docker run --rm alpine echo "Hello from DinD! Docker is working correctly."
 
-      # 5. 构建并推送
-      - name: Build and Push
-        uses: docker/build-push-action@v4
-        with:
-          context: .
-          file: ./Dockerfile
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          # 开启缓存，加速下一次构建（会缓存各层 Layer）
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - name: 4. 测试构建镜像 (Optional)
+        run: |
+          echo "FROM alpine" > Dockerfile
+          echo "RUN echo 'Built inside Gitea Actions'" >> Dockerfile
+          docker build -t test-image:latest .
+          docker images | grep test-image
