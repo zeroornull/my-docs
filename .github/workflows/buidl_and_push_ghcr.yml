@@ -44,7 +44,7 @@ jobs:
         uses: docker://bitnami/kubectl:latest
         env:
           # 需要在 Gitea Secrets 中配置 KUBE_CONFIG
-          KUBECONFIG_CONTENT: ${{ secrets.KUBE_CONFIG }}
+          KUBECONFIG_CONTENT: ${{ secrets.KUBE_CONFIG_TEST }}
         with:
           entrypoint: /bin/sh
           args: >-
