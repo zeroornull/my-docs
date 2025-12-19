@@ -34,44 +34,42 @@ jobs:
             /kaniko/executor --context=. --dockerfile=Dockerfile --destination=\$HOST/\$LOWER_USER/my-docs:latest --destination=\$HOST/\$LOWER_USER/my-docs:${{ github.sha }} --insecure --skip-tls-verify --cache=true
             "
 
-  # --- 第二部分：部署到 K8s (新增部分) ---
   deploy:
-    needs: build  # 只有 build 成功才执行
-    runs-on: ubuntu-latest
-    steps:
-      - name: Deploy to Kubernetes
-        # 使用包含 kubectl 的轻量级镜像
-        uses: docker://bitnami/kubectl:latest
-        env:
-          # 需要在 Gitea Secrets 中配置 KUBE_CONFIG
-          KUBECONFIG_CONTENT: ${{ secrets.KUBE_CONFIG_TEST }}
-        with:
-          entrypoint: /bin/sh
-          args: >-
-            -c
-            "
-            # 1. 配置 Kubeconfig
-            echo \"$KUBECONFIG_CONTENT\" > /tmp/kubeconfig;
-            export KUBECONFIG=/tmp/kubeconfig;
+      needs: build
+      runs-on: ubuntu-latest
+      steps:
+        - name: Deploy to Kubernetes
+          uses: docker://bitnami/kubectl:latest
+          env:
+            # 这里传入的是 Base64 编码后的字符串，不再是原始 YAML
+            KUBECONFIG_BASE64: ${{ secrets.KUBE_CONFIG_TEST }}
+          with:
+            entrypoint: /bin/sh
+            args: >-
+              -c
+              "
+              # 1. 解码 Base64 并写入文件 (最稳健的方式)
+              echo \"$KUBECONFIG_BASE64\" | base64 -d > /tmp/kubeconfig;
+              
+              # 设置环境变量
+              export KUBECONFIG=/tmp/kubeconfig;
 
-            # 2. 准备变量 (保持与 Build 阶段一致的逻辑)
-            HOST='gitea-http.gitea.svc.cluster.local:3000';
-            RAW_USER='${{ gitea.actor }}';
-            LOWER_USER=$(echo $RAW_USER | tr '[:upper:]' '[:lower:]');
-            IMAGE_TAG='${{ github.sha }}';
-            FULL_IMAGE=\"$HOST/$LOWER_USER/my-docs:$IMAGE_TAG\";
+              # --- 调试代码 (如果还报错，请取消下面两行的注释来查看文件是否有内容) ---
+              # echo 'Checking kubeconfig content size:'
+              # ls -l /tmp/kubeconfig
+              # -------------------------------------------------------------
 
-            echo \"Deploying image: $FULL_IMAGE\";
+              # 2. 准备变量
+              HOST='gitea-http.gitea.svc.cluster.local:3000';
+              RAW_USER='${{ gitea.actor }}';
+              LOWER_USER=$(echo $RAW_USER | tr '[:upper:]' '[:lower:]');
+              IMAGE_TAG='${{ github.sha }}';
+              FULL_IMAGE=\"$HOST/$LOWER_USER/my-docs:$IMAGE_TAG\";
 
-            # 3. 执行滚动更新
-            # 注意：请将 'my-docs-deployment' 替换为你 K8s 里真实的 Deployment 名称
-            # 注意：请将 'my-container' 替换为 Deployment yaml 里定义的容器名称
-            kubectl set image deployment/my-docs nginx=$FULL_IMAGE -n dev;
+              echo \"Deploying image: $FULL_IMAGE\";
 
-            kubectl rollout restart deployment/my-docs -n dev
-
-            # 4. 等待部署完成
-            kubectl rollout status deployment/my-docs -n dev;
-
-            kubectl get pods -n dev -l app=my-docs
-            "
+              # 3. 执行命令
+              kubectl set image deployment/my-docs nginx=$FULL_IMAGE -n dev;
+              kubectl rollout restart deployment/my-docs -n dev;
+              kubectl rollout status deployment/my-docs -n dev;
+              "
