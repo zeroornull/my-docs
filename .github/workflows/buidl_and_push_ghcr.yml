@@ -42,7 +42,7 @@ jobs:
           uses: docker://bitnami/kubectl:latest
           env:
             KUBECONFIG_BASE64: ${{ secrets.KUBE_CONFIG_TEST }}
-            HOST: gitea-http.gitea.svc.cluster.local:3000
+            HOST: gitea.173114.xyz
             RAW_USER: ${{ gitea.actor }}
             IMAGE_TAG: ${{ github.sha }}
           with:
