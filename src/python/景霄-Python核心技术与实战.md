@@ -8,7 +8,8 @@
 #     index: true
 title: Python核心技术与实战-jingxiao
 index: true
-headerDepth: 3
+toc:
+  levels: 3
 # icon: laptop-code
 # sidebar: true
 # toc: true

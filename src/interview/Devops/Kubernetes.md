@@ -8,7 +8,8 @@
 #     index: true
 title: Kubernetes
 index: true
-headerDepth: 3
+toc:
+  levels: 3
 order: 3
 # icon: laptop-code
 # sidebar: true

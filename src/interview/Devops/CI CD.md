@@ -8,7 +8,8 @@
 #     index: true
 title: CI/CD
 index: true
-headerDepth: 3
+toc:
+  levels: 3
 order: 4
 # icon: laptop-code
 # sidebar: true

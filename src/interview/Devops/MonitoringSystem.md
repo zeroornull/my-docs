@@ -8,7 +8,8 @@
 #     index: true
 title: 监控体系
 index: true
-headerDepth: 3
+toc:
+  levels: 3
 order: 5
 # icon: laptop-code
 # sidebar: true

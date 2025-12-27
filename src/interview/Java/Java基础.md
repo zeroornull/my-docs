@@ -8,7 +8,8 @@
 #     index: true
 title: Java基础
 index: true
-headerDepth: 3
+toc:
+  levels: 3
 order: 1
 # icon: laptop-code
 # sidebar: true

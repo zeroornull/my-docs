@@ -8,7 +8,8 @@
 #     index: true
 title: 开发基础
 index: true
-headerDepth: 3
+toc:
+  levels: 3
 # icon: laptop-code
 # sidebar: true
 # toc: true

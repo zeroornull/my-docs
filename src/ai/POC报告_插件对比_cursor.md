@@ -1,7 +1,8 @@
 ---
 title: POC报告_插件对比_cursor
 index: true
-headerDepth: 3
+toc:
+  levels: 3
 # icon: laptop-code
 # sidebar: true
 # toc: true
