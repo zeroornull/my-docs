@@ -1,0 +1,79 @@
+name: Build and Deploy (Kaniko + Kubectl)
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  # --- 第一部分：构建并推送镜像 (保持原样，稍作变量优化) ---
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build and Push
+        uses: docker://gcr.io/kaniko-project/executor:v1.23.2-debug
+        with:
+          entrypoint: /busybox/sh
+          args: >-
+            -c
+            "
+            HOST='gitea-http.gitea.svc.cluster.local:3000';
+            RAW_USER='${{ gitea.actor }}';
+            LOWER_USER=$(echo $RAW_USER | tr '[:upper:]' '[:lower:]');
+            PASS='${{ secrets.PACKAGES_TOKEN }}';
+            
+            echo \"DEBUG: Host=\$HOST User=\$LOWER_USER\";
+
+            AUTH_STR=$(echo -n \"${RAW_USER}:${PASS}\" | base64 | tr -d '\n');
+            
+            echo \"{\\\"auths\\\":{\\\"\$HOST\\\":{\\\"auth\\\":\\\"\$AUTH_STR\\\"}}}\" > /kaniko/.docker/config.json;
+            
+            /kaniko/executor --context=. --dockerfile=Dockerfile --destination=\$HOST/\$LOWER_USER/my-docs:latest --destination=\$HOST/\$LOWER_USER/my-docs:${{ github.sha }} --insecure --skip-tls-verify --cache=true
+            "
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to Kubernetes
+        uses: docker://bitnami/kubectl:latest
+        env:
+          KUBECONFIG_BASE64: ${{ secrets.KUBE_CONFIG_TEST }}
+          HOST: gitea.173114.xyz
+          RAW_USER: ${{ gitea.actor }}
+          IMAGE_TAG: ${{ github.sha }}
+        with:
+          entrypoint: /bin/sh
+          args: >-
+            -c
+            "
+            set -xe;
+            
+            echo '>>> Step 1: Checking Environment';
+            if [ -z \"$KUBECONFIG_BASE64\" ]; then
+              echo 'Error: KUBECONFIG_BASE64 is empty! Check Gitea Secrets.';
+              exit 1;
+            fi;
+            
+            echo '>>> Step 2: Decoding Kubeconfig';
+            echo \"$KUBECONFIG_BASE64\" | base64 -d > /tmp/kubeconfig;
+            export KUBECONFIG=/tmp/kubeconfig;
+            
+            echo '>>> Step 3: Verifying Cluster Connection';
+            kubectl cluster-info;
+            
+            echo '>>> Step 4: Preparing Image Name';
+            LOWER_USER=$(echo $RAW_USER | tr '[:upper:]' '[:lower:]');
+            FULL_IMAGE=\"$HOST/$LOWER_USER/my-docs:$IMAGE_TAG\";
+            echo \"Target Image: $FULL_IMAGE\";
+            
+            echo '>>> Step 5: Executing Deployment';
+            kubectl set image deployment/my-docs nginx=$FULL_IMAGE -n dev;
+            
+            echo '>>> Step 6: Restarting and Waiting';
+            kubectl rollout restart deployment/my-docs -n dev;
+            kubectl rollout status deployment/my-docs -n dev;
+            "

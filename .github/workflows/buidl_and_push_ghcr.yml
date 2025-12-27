@@ -1,79 +1,44 @@
-name: Build and Deploy (Kaniko + Kubectl)
+name: Docker Image CI
 
 on:
-  push:
-    branches: [ main ]
-  workflow_dispatch:
+  workflow_dispatch:  # 保留手动触发
+  push:              # 添加 push 事件触发
+    branches:        # 指定触发分支
+      - main        # 当推送代码到 main 分支时触发
+
+# 显式声明权限
+permissions:
+  packages: write  # 允许写入 packages
+  contents: read   # 允许读取仓库内容
 
 jobs:
-  # --- 第一部分：构建并推送镜像 (保持原样，稍作变量优化) ---
   build:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Build and Push
-        uses: docker://gcr.io/kaniko-project/executor:v1.23.2-debug
+      # 设置 Docker Buildx
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # 登录 GitHub Container Registry
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
         with:
-          entrypoint: /busybox/sh
-          args: >-
-            -c
-            "
-            HOST='gitea-http.gitea.svc.cluster.local:3000';
-            RAW_USER='${{ gitea.actor }}';
-            LOWER_USER=$(echo $RAW_USER | tr '[:upper:]' '[:lower:]');
-            PASS='${{ secrets.PACKAGES_TOKEN }}';
-            
-            echo \"DEBUG: Host=\$HOST User=\$LOWER_USER\";
+          registry: ghcr.io
+          username: ${{ github.actor }}  # 你的用户名: zeroornull
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-            AUTH_STR=$(echo -n \"${RAW_USER}:${PASS}\" | base64 | tr -d '\n');
-            
-            echo \"{\\\"auths\\\":{\\\"\$HOST\\\":{\\\"auth\\\":\\\"\$AUTH_STR\\\"}}}\" > /kaniko/.docker/config.json;
-            
-            /kaniko/executor --context=. --dockerfile=Dockerfile --destination=\$HOST/\$LOWER_USER/my-docs:latest --destination=\$HOST/\$LOWER_USER/my-docs:${{ github.sha }} --insecure --skip-tls-verify --cache=true
-            "
-
-  deploy:
-      needs: build
-      runs-on: ubuntu-latest
-      steps:
-        - name: Deploy to Kubernetes
-          uses: docker://bitnami/kubectl:latest
-          env:
-            KUBECONFIG_BASE64: ${{ secrets.KUBE_CONFIG_TEST }}
-            HOST: gitea.173114.xyz
-            RAW_USER: ${{ gitea.actor }}
-            IMAGE_TAG: ${{ github.sha }}
-          with:
-            entrypoint: /bin/sh
-            args: >-
-              -c
-              "
-              set -xe;
-              
-              echo '>>> Step 1: Checking Environment';
-              if [ -z \"$KUBECONFIG_BASE64\" ]; then
-                echo 'Error: KUBECONFIG_BASE64 is empty! Check Gitea Secrets.';
-                exit 1;
-              fi;
-
-              echo '>>> Step 2: Decoding Kubeconfig';
-              echo \"$KUBECONFIG_BASE64\" | base64 -d > /tmp/kubeconfig;
-              export KUBECONFIG=/tmp/kubeconfig;
-
-              echo '>>> Step 3: Verifying Cluster Connection';
-              kubectl cluster-info;
-              
-              echo '>>> Step 4: Preparing Image Name';
-              LOWER_USER=$(echo $RAW_USER | tr '[:upper:]' '[:lower:]');
-              FULL_IMAGE=\"$HOST/$LOWER_USER/my-docs:$IMAGE_TAG\";
-              echo \"Target Image: $FULL_IMAGE\";
-
-              echo '>>> Step 5: Executing Deployment';
-              kubectl set image deployment/my-docs nginx=$FULL_IMAGE -n dev;
-
-              echo '>>> Step 6: Restarting and Waiting';
-              kubectl rollout restart deployment/my-docs -n dev;
-              kubectl rollout status deployment/my-docs -n dev;
-              "
+      # 构建并推送 Docker 镜像
+      - name: Build and push Docker image
+        run: |
+          # 使用个人命名空间，镜像名改为 my-docs
+          IMAGE_NAME="ghcr.io/zeroornull/my-docs"
+          echo "Pushing to: $IMAGE_NAME"
+          docker build . --file Dockerfile \
+            --tag "$IMAGE_NAME:latest" \
+            --tag "$IMAGE_NAME:${{ github.sha }}"
+          docker push "$IMAGE_NAME:latest"
+          docker push "$IMAGE_NAME:${{ github.sha }}"
