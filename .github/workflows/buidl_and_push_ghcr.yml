@@ -1,4 +1,4 @@
-name: Build and Deploy (Kaniko + Kubectl)
+name: Build and Deploy (Kaniko Multi-Arch)
 
 on:
   push:
@@ -6,48 +6,87 @@ on:
   workflow_dispatch:
 
 jobs:
-  # --- 第一部分：构建并推送镜像 (使用 Docker Buildx 支持多架构) ---
   build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Prepare Image Name
-        id: prep
-        run: |
-          RAW_USER='${{ gitea.actor }}'
-          LOWER_USER=$(echo $RAW_USER | tr '[:upper:]' '[:lower:]')
-          HOST='gitea-http.gitea.svc.cluster.local:3000'
-          echo "image_name=$HOST/$LOWER_USER/my-docs" >> $GITHUB_OUTPUT
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      # 注册 QEMU 以支持 ARM64 构建 (需要 Runner 支持特权容器)
+      - name: Setup QEMU
+        uses: docker://tonistiigi/binfmt:qemu-v7.0.0-28
         with:
-          config-inline: |
-            [registry."gitea-http.gitea.svc.cluster.local:3000"]
-              http = true
-              insecure = true
+          args: --install all
 
-      - name: Login to Registry
-        uses: docker/login-action@v3
+      # 构建 AMD64 镜像
+      - name: Build AMD64
+        uses: docker://gcr.io/kaniko-project/executor:v1.23.2-debug
         with:
-          registry: gitea-http.gitea.svc.cluster.local:3000
-          username: ${{ gitea.actor }}
-          password: ${{ secrets.PACKAGES_TOKEN }}
+          entrypoint: /busybox/sh
+          args: >-
+            -c
+            "
+            HOST='gitea-http.gitea.svc.cluster.local:3000';
+            RAW_USER='${{ gitea.actor }}';
+            LOWER_USER=$(echo $RAW_USER | tr '[:upper:]' '[:lower:]');
+            PASS='${{ secrets.PACKAGES_TOKEN }}';
+            AUTH_STR=$(echo -n \"${RAW_USER}:${PASS}\" | base64 | tr -d '\n');
+            
+            echo \"{\\\"auths\\\":{\\\"\$HOST\\\":{\\\"auth\\\":\\\"\$AUTH_STR\\\"}}}\" > /kaniko/.docker/config.json;
+            
+            /kaniko/executor --context=. --dockerfile=Dockerfile --destination=\$HOST/\$LOWER_USER/my-docs:${{ github.sha }}-amd64 --customPlatform=linux/amd64 --insecure --skip-tls-verify --cache=true
+            "
 
-      - name: Build and Push
-        uses: docker/build-push-action@v5
+      # 构建 ARM64 镜像
+      - name: Build ARM64
+        uses: docker://gcr.io/kaniko-project/executor:v1.23.2-debug
         with:
-          context: .
-          push: true
-          platforms: linux/amd64,linux/arm64
-          tags: |
-            ${{ steps.prep.outputs.image_name }}:latest
-            ${{ steps.prep.outputs.image_name }}:${{ github.sha }}
+          entrypoint: /busybox/sh
+          args: >-
+            -c
+            "
+            HOST='gitea-http.gitea.svc.cluster.local:3000';
+            RAW_USER='${{ gitea.actor }}';
+            LOWER_USER=$(echo $RAW_USER | tr '[:upper:]' '[:lower:]');
+            PASS='${{ secrets.PACKAGES_TOKEN }}';
+            AUTH_STR=$(echo -n \"${RAW_USER}:${PASS}\" | base64 | tr -d '\n');
+            
+            echo \"{\\\"auths\\\":{\\\"\$HOST\\\":{\\\"auth\\\":\\\"\$AUTH_STR\\\"}}}\" > /kaniko/.docker/config.json;
+            
+            /kaniko/executor --context=. --dockerfile=Dockerfile --destination=\$HOST/\$LOWER_USER/my-docs:${{ github.sha }}-arm64 --customPlatform=linux/arm64 --insecure --skip-tls-verify --cache=true
+            "
+
+      # 合并 Manifest 并推送
+      - name: Push Manifest List
+        uses: docker://mplatform/manifest-tool:alpine
+        with:
+          entrypoint: /bin/sh
+          args: >-
+            -c
+            "
+            HOST='gitea-http.gitea.svc.cluster.local:3000';
+            RAW_USER='${{ gitea.actor }}';
+            LOWER_USER=$(echo $RAW_USER | tr '[:upper:]' '[:lower:]');
+            PASS='${{ secrets.PACKAGES_TOKEN }}';
+            AUTH_STR=$(echo -n \"${RAW_USER}:${PASS}\" | base64 | tr -d '\n');
+            
+            mkdir -p ~/.docker;
+            echo \"{\\\"auths\\\":{\\\"\$HOST\\\":{\\\"auth\\\":\\\"\$AUTH_STR\\\"}}}\" > ~/.docker/config.json;
+
+            echo '>>> Pushing Manifest for SHA tag';
+            manifest-tool push from-args \
+              --platforms linux/amd64,linux/arm64 \
+              --template \$HOST/\$LOWER_USER/my-docs:${{ github.sha }}-ARCH \
+              --target \$HOST/\$LOWER_USER/my-docs:${{ github.sha }} \
+              --insecure;
+
+            echo '>>> Pushing Manifest for latest tag';
+            manifest-tool push from-args \
+              --platforms linux/amd64,linux/arm64 \
+              --template \$HOST/\$LOWER_USER/my-docs:${{ github.sha }}-ARCH \
+              --target \$HOST/\$LOWER_USER/my-docs:latest \
+              --insecure;
+            "
 
   deploy:
     needs: build
