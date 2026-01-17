@@ -1,4 +1,4 @@
-name: Build and Deploy (Buildah Version)
+name: Build and Deploy (Buildah in DinD)
 
 on:
   push:
@@ -8,41 +8,36 @@ on:
 
 jobs:
   build-and-deploy:
-    runs-on: oracle
-    # 1. 更换为 Buildah 官方镜像，或者确保你的镜像里安装了 buildah 和 qemu-user-static
-    container:
-      image: quay.io/buildah/stable:latest
-      # 2. 关键：在 K8s Pod 里运行 Buildah 通常需要特权模式，或者复杂的 User Namespace 配置
-      options: --privileged
+    runs-on: gitea-actions-act-runner-0
+    # ⚠️ 关键点 1: 在 DinD 模式下，不要指定 container: image
+    # 直接使用 Runner 默认的环境 (通常是 catthehacker/ubuntu 或类似)，它自带了 Node.js
     
     env:
       REGISTRY: gitea.173114.xyz
       IMAGE_NAME: gitea_admin/my-docs
-      # 1. 强制使用 VFS 存储驱动 (必须)
+      # ⚠️ 关键点 2: 即使有特权，在容器里跑 Buildah 依然建议用 vfs
+      # 因为 overlayfs 不支持在容器里嵌套运行 (除非宿主机做了特殊配置)
       STORAGE_DRIVER: vfs
-      # 2. 关键修复：禁用命名空间隔离，改用 chroot (解决 unshare 错误)
-      BUILDAH_ISOLATION: chroot
-      # 3. 显式指定 Buildah 使用 docker 格式
       BUILDAH_FORMAT: docker
 
     steps:
-      - name: Install dependencies
-        run: |
-          # Buildah 镜像基于 Fedora/RedHat，使用 dnf
-          # 安装 git (检出代码), qemu-user-static (多架构编译), curl (下载 kubectl)
-          dnf install -y nodejs git qemu-user-static curl
-
       - name: Checkout code
         uses: actions/checkout@v4
+        # 这里不需要手动安装 Node.js，因为默认 Runner 镜像里都有
+
+      - name: Install Buildah & QEMU
+        run: |
+          # ⚠️ 关键点 3: 在 Ubuntu (默认 Runner) 上安装 Buildah
+          # 确保更新源，防止找不到包
+          sudo apt-get update
+          sudo apt-get install -y buildah qemu-user-static
 
       - name: Log in to Gitea Registry
         run: |
-          # 使用 buildah login
           buildah login -u ${{ secrets.ADMIN_USERNAME }} -p ${{ secrets.PACKAGES_TOKEN }} ${{ env.REGISTRY }}
 
-      # ----------------------------------------------------------------
-      # 第一步：构建并推送 AMD64 镜像
-      # ----------------------------------------------------------------
+      # --- 下面这几步和之前一样 (构建 -> 推送 -> 合并) ---
+
       - name: Build and Push AMD64
         run: |
           buildah build --platform linux/amd64 \
@@ -50,9 +45,6 @@ jobs:
             -f Dockerfile .
           buildah push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:amd64
 
-      # ----------------------------------------------------------------
-      # 第二步：构建并推送 ARM64 镜像 (依赖 qemu-user-static)
-      # ----------------------------------------------------------------
       - name: Build and Push ARM64
         run: |
           buildah build --platform linux/arm64 \
@@ -60,44 +52,26 @@ jobs:
             -f Dockerfile .
           buildah push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:arm64
 
-      # ----------------------------------------------------------------
-      # 第三步：创建 Manifest 并合并镜像
-      # ----------------------------------------------------------------
       - name: Create and Push Manifest
         run: |
-          # 1. 创建一个新的清单列表名称
           MANIFEST_NAME="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+          # 如果之前跑过，可能会有残留，先删一下
+          buildah manifest rm $MANIFEST_NAME || true
           
           buildah manifest create $MANIFEST_NAME
-          
-          # 2. 将刚才推送的两个架构镜像加入清单
           buildah manifest add $MANIFEST_NAME docker://${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:amd64
           buildah manifest add $MANIFEST_NAME docker://${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:arm64
-          
-          # 3. 推送 manifest 到仓库 (latest)
           buildah manifest push --all $MANIFEST_NAME docker://$MANIFEST_NAME
-          
-          # 4. 如果需要 commit sha 的 tag，可以复制一份 manifest 推送
-          SHA_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
-          buildah manifest push --all $MANIFEST_NAME docker://$SHA_TAG
 
-      # ----------------------------------------------------------------
-      # 部署部分 (需要手动安装 kubectl，因为基础镜像变了)
-      # ----------------------------------------------------------------
+      # --- 部署部分 ---
+      
       - name: Install kubectl
-        run: |
-          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-          chmod +x kubectl
-          mv kubectl /usr/local/bin/
-
+        uses: azure/setup-kubectl@v3 # 既然是默认 Runner，这个官方 Action 也能直接用了
+        
       - name: Deploy to Kubernetes
         run: |
           mkdir -p ~/.kube
           echo "${{ secrets.KUBE_CONFIG }}" > ~/.kube/config
           chmod 600 ~/.kube/config
-          
-          # 更新镜像
           kubectl set image deployment/my-docs nginx=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest -n dev
-          
-          # 重启
           kubectl rollout restart deployment/my-docs -n dev
