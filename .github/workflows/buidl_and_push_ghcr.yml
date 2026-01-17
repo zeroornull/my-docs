@@ -1,4 +1,4 @@
-name: Build and Deploy
+name: Build and Deploy (Buildah Version)
 
 on:
   push:
@@ -9,42 +9,84 @@ on:
 jobs:
   build-and-deploy:
     runs-on: oracle
+    # 1. 更换为 Buildah 官方镜像，或者确保你的镜像里安装了 buildah 和 qemu-user-static
     container:
-      image: catthehacker/ubuntu:act-22.04
+      image: quay.io/buildah/stable:latest
+      # 2. 关键：在 K8s Pod 里运行 Buildah 通常需要特权模式，或者复杂的 User Namespace 配置
+      options: --privileged
+    
     env:
       REGISTRY: gitea.173114.xyz
       IMAGE_NAME: gitea_admin/my-docs
+      # 3. 关键：在容器内运行 Buildah 必须使用 vfs 驱动，否则 overlayfs 会报错
+      STORAGE_DRIVER: vfs
+      # 确保构建出的格式是 docker 兼容的
+      BUILDAH_FORMAT: docker
 
     steps:
+      - name: Install dependencies
+        run: |
+          # Buildah 镜像基于 Fedora/RedHat，使用 dnf
+          # 安装 git (检出代码), qemu-user-static (多架构编译), curl (下载 kubectl)
+          dnf install -y git qemu-user-static curl
+
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Log in to Gitea Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ secrets.ADMIN_USERNAME }}
-          password: ${{ secrets.PACKAGES_TOKEN }}
+        run: |
+          # 使用 buildah login
+          buildah login -u ${{ secrets.ADMIN_USERNAME }} -p ${{ secrets.PACKAGES_TOKEN }} ${{ env.REGISTRY }}
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+      # ----------------------------------------------------------------
+      # 第一步：构建并推送 AMD64 镜像
+      # ----------------------------------------------------------------
+      - name: Build and Push AMD64
+        run: |
+          buildah build --platform linux/amd64 \
+            -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:amd64 \
+            -f Dockerfile .
+          buildah push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:amd64
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      
-      - name: Build and Push multi-arch Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+      # ----------------------------------------------------------------
+      # 第二步：构建并推送 ARM64 镜像 (依赖 qemu-user-static)
+      # ----------------------------------------------------------------
+      - name: Build and Push ARM64
+        run: |
+          buildah build --platform linux/arm64 \
+            -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:arm64 \
+            -f Dockerfile .
+          buildah push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:arm64
 
+      # ----------------------------------------------------------------
+      # 第三步：创建 Manifest 并合并镜像
+      # ----------------------------------------------------------------
+      - name: Create and Push Manifest
+        run: |
+          # 1. 创建一个新的清单列表名称
+          MANIFEST_NAME="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+          
+          buildah manifest create $MANIFEST_NAME
+          
+          # 2. 将刚才推送的两个架构镜像加入清单
+          buildah manifest add $MANIFEST_NAME docker://${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:amd64
+          buildah manifest add $MANIFEST_NAME docker://${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:arm64
+          
+          # 3. 推送 manifest 到仓库 (latest)
+          buildah manifest push --all $MANIFEST_NAME docker://$MANIFEST_NAME
+          
+          # 4. 如果需要 commit sha 的 tag，可以复制一份 manifest 推送
+          SHA_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
+          buildah manifest push --all $MANIFEST_NAME docker://$SHA_TAG
+
+      # ----------------------------------------------------------------
+      # 部署部分 (需要手动安装 kubectl，因为基础镜像变了)
+      # ----------------------------------------------------------------
       - name: Install kubectl
-        uses: azure/setup-kubectl@v3
+        run: |
+          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          chmod +x kubectl
+          mv kubectl /usr/local/bin/
 
       - name: Deploy to Kubernetes
         run: |
@@ -52,8 +94,8 @@ jobs:
           echo "${{ secrets.KUBE_CONFIG }}" > ~/.kube/config
           chmod 600 ~/.kube/config
           
-          # Update the deployment to use the new image from Gitea registry
-          kubectl set image deployment/my-docs nginx=$REGISTRY/$IMAGE_NAME:latest -n dev
+          # 更新镜像
+          kubectl set image deployment/my-docs nginx=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest -n dev
           
-          # Restart the rollout
+          # 重启
           kubectl rollout restart deployment/my-docs -n dev
