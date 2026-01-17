@@ -28,7 +28,7 @@ jobs:
         run: |
           # Buildah 镜像基于 Fedora/RedHat，使用 dnf
           # 安装 git (检出代码), qemu-user-static (多架构编译), curl (下载 kubectl)
-          dnf install -y git qemu-user-static curl
+          dnf install -y nodejs git qemu-user-static curl
 
       - name: Checkout code
         uses: actions/checkout@v4
