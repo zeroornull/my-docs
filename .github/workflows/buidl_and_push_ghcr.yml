@@ -13,14 +13,18 @@ jobs:
       image: catthehacker/ubuntu:act-22.04
     env:
       REGISTRY: gitea.173114.xyz
-      IMAGE_NAME: my-docs
+      IMAGE_NAME: zeroornull/my-docs
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Log in to Gitea Registry
-        run: echo "${{ secrets.GITEA_PASSWORD }}" | docker login ${{ env.REGISTRY }} -u ${{ secrets.GITEA_USERNAME }} --password-stdin
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.ADMIN_USERNAME }}
+          password: ${{ secrets.PACKAGES_TOKEN }}
 
       - name: Build and Push Docker image
         run: |
