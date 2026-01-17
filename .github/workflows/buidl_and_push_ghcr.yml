@@ -18,9 +18,11 @@ jobs:
     env:
       REGISTRY: gitea.173114.xyz
       IMAGE_NAME: gitea_admin/my-docs
-      # 3. 关键：在容器内运行 Buildah 必须使用 vfs 驱动，否则 overlayfs 会报错
+      # 1. 强制使用 VFS 存储驱动 (必须)
       STORAGE_DRIVER: vfs
-      # 确保构建出的格式是 docker 兼容的
+      # 2. 关键修复：禁用命名空间隔离，改用 chroot (解决 unshare 错误)
+      BUILDAH_ISOLATION: chroot
+      # 3. 显式指定 Buildah 使用 docker 格式
       BUILDAH_FORMAT: docker
 
     steps:
