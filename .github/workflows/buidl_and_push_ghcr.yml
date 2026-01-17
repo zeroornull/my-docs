@@ -30,9 +30,12 @@ jobs:
             --tag "$IMAGE_NAME:latest" \
             --tag "$IMAGE_NAME:${{ github.sha }}"
 
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v3
+
       - name: Restart/Rollout Deployment
-        uses: actions-hub/kubectl@master
-        env:
-          KUBE_CONFIG: ${{ secrets.KUBE_CONFIG }}
-        with:
-          args: rollout restart deployment/my-docs
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBE_CONFIG }}" > ~/.kube/config
+          chmod 600 ~/.kube/config
+          kubectl rollout restart deployment/my-docs
