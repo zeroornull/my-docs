@@ -13,7 +13,7 @@ jobs:
       image: catthehacker/ubuntu:act-22.04
     env:
       REGISTRY: gitea.173114.xyz
-      IMAGE_NAME: my-docs
+      IMAGE_NAME: gitea_admin/my-docs
 
     steps:
       - name: Checkout code
